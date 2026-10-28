@@ -1,0 +1,1145 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Romeo & Juliet's Disposable Wedding Camera</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Socket.io Client for real-time live photo feed updates -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- Google Fonts: Newsreader, Share Tech Mono (Retro Date Stamp), & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;0,6..72,500;0,6..72,600;1,6..72,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=Share+Tech+Mono&family=VT323&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background-color: #0c0d0e;
+      color: #f3f4f6;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .font-serif-title {
+      font-family: 'Newsreader', Georgia, serif;
+    }
+    .font-retro-stamp {
+      font-family: 'Share Tech Mono', 'VT323', monospace;
+    }
+    /* Mirror transform for selfie mode */
+    .mirror {
+      transform: scaleX(-1);
+    }
+    /* Skeuomorphic textured styling */
+    .disposable-body {
+      background: linear-gradient(145deg, #1e3a2f 0%, #13271f 60%, #0d1a15 100%);
+      box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.15), inset 0 -4px 8px rgba(0, 0, 0, 0.7), 0 16px 36px rgba(0, 0, 0, 0.6);
+    }
+    .disposable-grip {
+      background: repeating-linear-gradient(90deg, rgba(0,0,0,0.2) 0px, rgba(0,0,0,0.2) 2px, transparent 2px, transparent 6px);
+    }
+    .winder-wheel {
+      background: repeating-conic-gradient(#27272a 0% 15deg, #18181b 15deg 30deg);
+      box-shadow: inset 0 2px 4px rgba(255, 255, 255, 0.2), 0 3px 6px rgba(0,0,0,0.8);
+    }
+    .shutter-btn-3d {
+      background: radial-gradient(circle at 35% 30%, #ef4444 0%, #dc2626 40%, #991b1b 100%);
+      box-shadow: 0 5px 0 #7f1d1d, 0 8px 12px rgba(0, 0, 0, 0.6), inset 0 2px 2px rgba(255, 255, 255, 0.4);
+    }
+    .shutter-btn-3d:active {
+      transform: translateY(4px);
+      box-shadow: 0 1px 0 #7f1d1d, 0 3px 6px rgba(0, 0, 0, 0.5), inset 0 2px 2px rgba(255, 255, 255, 0.3);
+    }
+    /* Flashing shutter animation */
+    @keyframes shutter-flash {
+      0% { opacity: 0.95; }
+      100% { opacity: 0; }
+    }
+    .shutter-flash {
+      animation: shutter-flash 0.3s ease-out forwards;
+    }
+    /* Date stamp glow */
+    .retro-date-stamp {
+      color: #ff8c00;
+      text-shadow: 0 0 6px rgba(255, 140, 0, 0.9), 0 0 12px rgba(255, 100, 0, 0.5);
+    }
+  </style>
+</head>
+<body class="min-h-screen text-neutral-100 flex justify-center selection:bg-amber-500 selection:text-black">
+
+  <!-- ======================================================== -->
+  <!-- 1. MAIN FEED SCREEN (Once.film Inspired Home View)       -->
+  <!-- ======================================================== -->
+  <div id="feedScreen" class="w-full max-w-md min-h-screen flex flex-col relative px-5 py-4 pb-24">
+
+    <!-- Top Navigation Header -->
+    <header class="flex items-center justify-between pt-2 pb-5">
+      <div class="w-10 h-10 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-300 flex items-center justify-center">
+        <span class="text-sm">🎞️</span>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <span class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-amber-300 text-[11px] font-semibold tracking-wide">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          WEDDING 35mm
+        </span>
+        <button id="btnSettingsInfo" class="w-10 h-10 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-300 flex items-center justify-center hover:bg-neutral-800 transition active:scale-95" title="Info">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Event Title & Metadata Section -->
+    <section class="flex items-start justify-between gap-4 mb-6">
+      <div class="flex-1">
+        <p class="text-[10px] uppercase tracking-[0.25em] text-amber-300/90 font-semibold mb-1">Disposable Photobooth</p>
+        <h1 class="text-3xl md:text-[34px] font-serif-title font-normal text-white tracking-tight leading-[1.15]">
+          Romeo & Juliet's<br/>Wedding
+        </h1>
+
+        <!-- Stats & Info Row -->
+        <div class="mt-3.5 space-y-1 text-xs text-neutral-400 font-medium">
+          <div class="flex items-center gap-2">
+            <svg class="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+            <span>Wedding Celebration</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <svg class="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z" />
+            </svg>
+            <span id="guestCountText">0 tamu bergabung</span>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <svg class="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+            </svg>
+            <span id="photoCountText">0 Roll Foto</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right Accent Film Roll Badge -->
+      <div class="w-20 h-20 rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800 shadow-md flex-shrink-0 relative group flex items-center justify-center p-2 text-center flex-col">
+        <span class="text-xs font-mono font-bold text-amber-300">ISO 400</span>
+        <span class="text-[9px] uppercase tracking-widest text-neutral-400 mt-0.5">35mm</span>
+        <div class="w-8 h-0.5 bg-amber-400/60 my-1"></div>
+        <span class="text-[8px] text-neutral-500">KODAK TONE</span>
+      </div>
+    </section>
+
+    <!-- Action Buttons Row (Save, Invite, Camera) -->
+    <section class="flex items-center gap-2.5 mb-7">
+      <!-- Save Button -->
+      <button id="btnSaveGallery" class="flex-1 py-3 px-3.5 rounded-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+        </svg>
+        <span>Save</span>
+      </button>
+
+      <!-- Invite Button -->
+      <button id="btnInvite" class="flex-1 py-3 px-3.5 rounded-full bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-200 text-xs font-semibold flex items-center justify-center gap-1.5 transition active:scale-95 shadow-sm">
+        <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v1m6 11h2m-6 0h-2v4m0-11v3m0 0h.01M12 12h4.01M16 20h4M4 12h4m12 0h.01M5 8h2a1 1 0 001-1V5a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1zm12 0h2a1 1 0 001-1V5a1 1 0 00-1-1h-2a1 1 0 00-1 1v2a1 1 0 001 1zM5 20h2a1 1 0 001-1v-2a1 1 0 00-1-1H5a1 1 0 00-1 1v2a1 1 0 001 1z" />
+        </svg>
+        <span>Invite</span>
+      </button>
+
+      <!-- Camera Hero Button (Launches Disposable Camera) -->
+      <button id="btnLaunchDisposable" class="flex-[1.6] py-3 px-5 rounded-full bg-gradient-to-r from-amber-400 via-amber-200 to-amber-400 hover:brightness-110 text-neutral-950 text-xs font-bold flex items-center justify-center gap-2 transition active:scale-95 shadow-lg shadow-amber-400/20">
+        <span class="text-sm">📸</span>
+        <span>Ambil Foto</span>
+      </button>
+    </section>
+
+    <!-- 2-Column Photo Grid Feed -->
+    <main class="flex-1">
+      <div class="flex items-center justify-between mb-3 px-1">
+        <h2 class="text-xs uppercase tracking-widest text-neutral-400 font-semibold">Roll Galeri Pernikahan</h2>
+        <span id="feedCountBadge" class="text-[10px] text-amber-300 font-mono">0 Foto</span>
+      </div>
+
+      <div id="photosGrid" class="grid grid-cols-2 gap-3.5">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyGalleryState" class="hidden flex-col items-center justify-center py-16 text-center px-4">
+        <div class="w-16 h-16 rounded-full bg-neutral-900 border border-neutral-800 flex items-center justify-center text-3xl mb-3.5">
+          🎞️
+        </div>
+        <h3 class="text-lg font-serif-title text-neutral-200 font-medium">Roll Film Masih Kosong</h3>
+        <p class="text-xs text-neutral-400 mt-1 max-w-[260px] leading-relaxed">
+          Ambil foto pertama Anda menggunakan kamera disposable dengan menekan tombol di bawah!
+        </p>
+      </div>
+    </main>
+
+    <!-- Floating Bottom Button -->
+    <div class="fixed bottom-5 left-1/2 -translate-x-1/2 z-30 w-full max-w-xs px-4">
+      <button id="btnFloatingLaunch" class="w-full py-3.5 px-6 rounded-full bg-gradient-to-r from-amber-400 to-amber-200 text-neutral-950 text-xs font-bold flex items-center justify-center gap-2.5 shadow-2xl shadow-amber-400/30 hover:brightness-105 transition active:scale-95 border border-white/60">
+        <span class="text-base">📷</span>
+        <span>Buka Kamera Disposable 35mm</span>
+      </button>
+    </div>
+
+  </div>
+
+
+  <!-- ======================================================== -->
+  <!-- 2. SKEUOMORPHIC RETRO DISPOSABLE CAMERA BODY VIEW        -->
+  <!-- ======================================================== -->
+  <div id="disposableModal" class="fixed inset-0 z-50 bg-[#070809] hidden flex flex-col justify-between overflow-y-auto">
+    
+    <!-- Top Action Bar -->
+    <div class="px-5 py-3 flex items-center justify-between z-20">
+      <button id="btnCloseDisposable" class="px-3.5 py-1.5 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs flex items-center gap-1.5 hover:bg-neutral-800 transition active:scale-95">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18" />
+        </svg>
+        <span>Galeri</span>
+      </button>
+
+      <div class="text-center">
+        <span class="text-[10px] tracking-widest text-amber-300/80 uppercase font-semibold">Single-Use Camera</span>
+      </div>
+
+      <button id="btnFlipLens" class="w-9 h-9 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-300 flex items-center justify-center hover:bg-neutral-800 transition active:scale-95" title="Putar Lensa">
+        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+        </svg>
+      </button>
+    </div>
+
+    <!-- MAIN DISPOSABLE CAMERA CONTAINER -->
+    <div class="flex-1 flex flex-col items-center justify-center p-3 relative">
+      
+      <!-- STEP A: CAMERA BODY VIEW (Shooting Mode) -->
+      <div id="cameraBodyWrapper" class="w-full max-w-[360px] disposable-body rounded-[32px] p-4 border border-emerald-950/80 relative flex flex-col justify-between shadow-2xl">
+        
+        <!-- Grip lines overlay -->
+        <div class="absolute inset-0 disposable-grip pointer-events-none rounded-[32px] opacity-40"></div>
+
+        <!-- CAMERA TOP PLATE -->
+        <div class="relative z-10 flex items-center justify-between pb-3 px-1 border-b border-white/10">
+          
+          <!-- Flash Unit Toggle with LED -->
+          <button id="btnToggleFlash" class="flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/40 border border-white/10 active:scale-95 transition">
+            <span id="flashLed" class="w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_#f59e0b]"></span>
+            <span id="flashStatusText" class="text-[11px] font-mono font-bold text-amber-200">FLASH: ON</span>
+          </button>
+
+          <!-- Film Branding Text -->
+          <div class="text-center">
+            <p class="text-[9px] font-bold tracking-widest text-emerald-200/90 uppercase">QUICK-WEDDING 35mm</p>
+            <p class="text-[8px] font-serif-title italic text-amber-200/70">Romeo & Juliet Edition</p>
+          </div>
+
+          <!-- Analog Film Frame Counter Window -->
+          <div class="flex flex-col items-center">
+            <div class="w-10 h-7 rounded-md bg-neutral-950 border-2 border-neutral-700 flex items-center justify-center shadow-inner">
+              <span id="filmFrameNumber" class="text-xs font-mono font-bold text-red-500">24</span>
+            </div>
+            <span class="text-[8px] text-neutral-400 uppercase font-mono tracking-wider mt-0.5">FILM SISA</span>
+          </div>
+
+        </div>
+
+        <!-- CENTER: VIEWFINDER (Live Video with Reticle & Date Stamp) -->
+        <div class="relative z-10 my-3.5 mx-auto w-full max-w-[310px] aspect-[3/4] rounded-2xl overflow-hidden bg-black border-4 border-neutral-900 shadow-2xl shadow-black flex items-center justify-center">
+          
+          <!-- Live Video Stream -->
+          <video id="videoElement" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover mirror"></video>
+
+          <!-- Viewfinder Vignette Overlay -->
+          <div class="absolute inset-0 pointer-events-none z-10 bg-gradient-to-t from-black/50 via-transparent to-black/30"></div>
+
+          <!-- Flash Overlay -->
+          <div id="flashOverlay" class="absolute inset-0 bg-white pointer-events-none opacity-0 z-40"></div>
+
+          <!-- Countdown Overlay -->
+          <div id="countdownOverlay" class="absolute inset-0 bg-black/60 backdrop-blur-sm hidden flex items-center justify-center z-30">
+            <span id="countdownNumber" class="text-7xl font-retro-stamp font-bold text-amber-400 animate-ping">3</span>
+          </div>
+
+          <!-- Viewfinder Crosshairs & Frame Overlay -->
+          <div class="absolute inset-0 pointer-events-none z-20 flex flex-col justify-between p-3.5">
+            <!-- Top Viewfinder Header -->
+            <div class="flex justify-between items-center text-[10px] font-mono text-white/70">
+              <span class="tracking-widest">3:4 FRAME</span>
+              <span class="tracking-widest">ISO 400</span>
+            </div>
+
+            <!-- Center Reticle Focus Bracket -->
+            <div class="self-center flex items-center justify-center text-white/40 text-lg select-none">
+              <span class="tracking-widest">[ + ]</span>
+            </div>
+
+            <!-- Bottom Wedding Frame Branding & Retro Date Stamp -->
+            <div class="flex items-end justify-between">
+              <div>
+                <p class="text-[9px] uppercase tracking-wider text-amber-200/90 font-semibold drop-shadow">Romeo & Juliet</p>
+                <p class="text-[8px] text-white/60 drop-shadow">Wedding 35mm</p>
+              </div>
+
+              <!-- Live Retro Glowing Orange Date Stamp -->
+              <div id="liveDateStamp" class="font-retro-stamp text-sm font-bold retro-date-stamp select-none tracking-wider">
+                '26 10 28
+              </div>
+            </div>
+          </div>
+
+          <!-- Inactive / Permission Notice Box -->
+          <div id="cameraNotice" class="absolute inset-0 bg-neutral-950/95 flex flex-col items-center justify-center p-5 text-center z-30 hidden overflow-y-auto">
+            <span class="text-3xl mb-2">📷</span>
+            <p id="noticeTitle" class="text-xs font-bold text-white mb-1">Akses Kamera Browser</p>
+            <p id="noticeDesc" class="text-[11px] text-neutral-400 mb-3 leading-relaxed">
+              Tekan tombol di bawah untuk menyalakan kamera langsung di dalam bodi disposable.
+            </p>
+            <button id="btnRetryCamera" class="w-full py-2.5 px-4 bg-amber-400 hover:bg-amber-300 text-neutral-950 text-xs font-bold rounded-xl shadow transition active:scale-98 mb-2">
+              Izinkan & Nyalakan Kamera
+            </button>
+            <button id="btnTriggerUpload" class="w-full py-2 px-4 bg-neutral-900 border border-neutral-800 text-neutral-300 text-xs rounded-xl active:scale-98">
+              Ambil dari Galeri HP
+            </button>
+          </div>
+
+        </div>
+
+        <!-- CAMERA BOTTOM PLATE (Tactile Shutter & Winder Wheel) -->
+        <div class="relative z-10 flex items-center justify-between px-2 pt-1 pb-1">
+          
+          <!-- Mechanical Film Winder Wheel -->
+          <div class="flex flex-col items-center">
+            <button id="btnWindFilm" class="w-12 h-12 rounded-full winder-wheel flex items-center justify-center border-2 border-neutral-700 active:rotate-45 transition transform" title="Putar Roll Film">
+              <span class="text-xs text-neutral-400 select-none">⚙️</span>
+            </button>
+            <span class="text-[8px] font-mono text-neutral-400 uppercase mt-1">WINDER</span>
+          </div>
+
+          <!-- Big Red Tactile Shutter Button -->
+          <div class="flex flex-col items-center">
+            <button id="btnShutter" class="w-20 h-20 rounded-full shutter-btn-3d flex items-center justify-center active:scale-95 transition" title="Jepret Foto!">
+              <div class="w-16 h-16 rounded-full border-2 border-white/20 flex items-center justify-center">
+                <span class="text-white text-xs font-bold tracking-wider font-mono">SNAP</span>
+              </div>
+            </button>
+            <span class="text-[9px] font-mono text-amber-200 font-bold uppercase mt-1">JEPRET</span>
+          </div>
+
+          <!-- Gallery Upload Fallback Button -->
+          <div class="flex flex-col items-center">
+            <button id="btnOpenGalleryPicker" class="w-12 h-12 rounded-full bg-black/50 border border-white/20 text-neutral-300 flex items-center justify-center hover:bg-neutral-800 active:scale-95 transition" title="Pilih File">
+              <svg class="w-5 h-5 text-neutral-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              </svg>
+            </button>
+            <span class="text-[8px] font-mono text-neutral-400 uppercase mt-1">GALERI</span>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- STEP B: DEVELOPED FILM PHOTO & WISH FORM -->
+      <div id="developedFormWrapper" class="w-full max-w-[340px] hidden flex-col items-center">
+        <!-- Developed Film Print Preview with Orange Date Stamp -->
+        <div class="relative w-full aspect-[3/4] rounded-2xl overflow-hidden shadow-2xl border-2 border-neutral-700 bg-black">
+          <img id="previewImage" alt="Developed Wedding Film" class="w-full h-full object-cover" />
+        </div>
+
+        <!-- Form Inputs -->
+        <form id="uploadForm" class="w-full mt-3.5 space-y-2.5">
+          <div>
+            <label for="guestName" class="block text-xs font-medium text-amber-200 mb-1">Nama Tamu / Pasangan *</label>
+            <input 
+              type="text" 
+              id="guestName" 
+              required 
+              maxlength="40"
+              placeholder="Contoh: Emma & Noah" 
+              class="w-full px-3.5 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-white placeholder-neutral-500 text-sm focus:outline-none focus:border-amber-400 transition"
+            />
+          </div>
+
+          <div>
+            <label for="guestMessage" class="block text-xs font-medium text-amber-200 mb-1">Ucapan & Doa Hangat *</label>
+            <textarea 
+              id="guestMessage" 
+              required 
+              rows="2" 
+              maxlength="200"
+              placeholder="Tuliskan doa restu untuk Romeo & Juliet..." 
+              class="w-full px-3.5 py-2.5 rounded-xl bg-neutral-900 border border-neutral-800 text-white placeholder-neutral-500 text-sm focus:outline-none focus:border-amber-400 resize-none transition"
+            ></textarea>
+          </div>
+
+          <!-- Action Buttons -->
+          <div class="flex items-center gap-2 pt-1">
+            <button 
+              type="button" 
+              id="btnRetakeFilm" 
+              class="flex-1 py-3 px-4 rounded-xl bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 text-neutral-300 text-xs font-semibold transition active:scale-98">
+              Jepret Ulang
+            </button>
+
+            <button 
+              type="submit" 
+              id="btnSubmitFilm" 
+              class="flex-[2] py-3 px-4 rounded-xl bg-gradient-to-r from-amber-400 via-amber-200 to-amber-400 hover:brightness-110 text-neutral-950 text-xs font-bold transition active:scale-98 flex items-center justify-center gap-1.5 shadow-lg shadow-amber-400/20">
+              <span id="btnSubmitText">Simpan & Unggah Foto</span>
+              <svg id="btnSubmitSpinner" class="w-4 h-4 animate-spin hidden" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+              </svg>
+            </button>
+          </div>
+        </form>
+      </div>
+
+    </div>
+
+    <!-- Bottom Instructions Tip -->
+    <div class="py-2.5 text-center text-[10px] text-neutral-500">
+      <span>Putar Winder ⚙️ setelah berfoto untuk efek mekanis film autentik</span>
+    </div>
+
+    <!-- Hidden Native File Picker -->
+    <input type="file" id="fileInput" accept="image/*" capture="user" class="hidden" />
+  </div>
+
+
+  <!-- ======================================================== -->
+  <!-- 3. PHOTO DETAIL LIGHTBOX MODAL                           -->
+  <!-- ======================================================== -->
+  <div id="detailModal" class="fixed inset-0 z-50 bg-black/90 backdrop-blur-md hidden flex flex-col justify-between p-4">
+    <div class="flex items-center justify-between pb-3">
+      <div class="flex items-center gap-2.5">
+        <div class="w-9 h-9 rounded-full bg-neutral-800 flex items-center justify-center text-sm font-semibold text-amber-300 font-mono">
+          <span id="detailAvatar">R</span>
+        </div>
+        <div>
+          <h4 id="detailGuestName" class="text-sm font-semibold text-white leading-tight">Nama Tamu</h4>
+          <p id="detailTimestamp" class="text-[10px] text-neutral-400">Waktu foto</p>
+        </div>
+      </div>
+
+      <button id="btnCloseDetail" class="w-9 h-9 rounded-full bg-neutral-800 text-neutral-300 flex items-center justify-center">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    </div>
+
+    <div class="flex-1 flex items-center justify-center overflow-hidden my-2">
+      <div class="max-h-[68vh] aspect-[3/4] rounded-2xl overflow-hidden border border-neutral-800 shadow-2xl">
+        <img id="detailImg" src="" alt="Wedding Photo" class="w-full h-full object-cover" />
+      </div>
+    </div>
+
+    <div class="bg-neutral-900/90 border border-neutral-800 rounded-2xl p-4 max-w-sm mx-auto w-full">
+      <p id="detailMessage" class="text-xs font-serif-title italic text-neutral-200 leading-relaxed">
+        "Ucapan doa..."
+      </p>
+      <div class="mt-3 flex items-center justify-between pt-2 border-t border-neutral-800">
+        <span class="text-[10px] text-amber-300/80 font-mono">35mm Film Print</span>
+        <a id="btnDownloadSingle" href="#" download="wedding-disposable-photo.jpg" class="text-xs font-semibold text-white flex items-center gap-1 hover:underline">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Simpan ke HP
+        </a>
+      </div>
+    </div>
+  </div>
+
+
+  <!-- ======================================================== -->
+  <!-- 4. INVITE & QR CODE MODAL                                -->
+  <!-- ======================================================== -->
+  <div id="inviteModal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm hidden flex items-center justify-center p-5">
+    <div class="w-full max-w-xs bg-neutral-900 border border-neutral-800 rounded-3xl p-6 text-center shadow-2xl">
+      <div class="flex items-center justify-between mb-4">
+        <h3 class="text-base font-serif-title font-medium text-white">Bagikan Kamera Disposable</h3>
+        <button id="btnCloseInvite" class="text-neutral-400 hover:text-white">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <div class="p-3 bg-white rounded-2xl mx-auto w-48 h-48 mb-4 flex items-center justify-center shadow-md">
+        <img id="inviteQrImg" src="/api/qr" alt="QR Code" class="w-full h-full object-contain" />
+      </div>
+
+      <p class="text-xs text-neutral-300 mb-3">Scan QR code ini untuk membuka kamera sekali pakai dan mengabadikan momen pernikahan!</p>
+
+      <button id="btnCopyLink" class="w-full py-2.5 px-4 rounded-xl bg-white text-neutral-950 text-xs font-bold transition active:scale-98">
+        Salin Tautan (Copy Link)
+      </button>
+    </div>
+  </div>
+
+
+  <!-- Hidden Canvas for 35mm Film Processing (720x960 px) -->
+  <canvas id="filmCanvas" width="720" height="960" class="hidden"></canvas>
+
+
+  <!-- ======================================================== -->
+  <!-- 5. JAVASCRIPT & ANALOG WEB AUDIO SYNTHESIZER              -->
+  <!-- ======================================================== -->
+  <script>
+    // State
+    let photos = [];
+    let currentStream = null;
+    let currentFacingMode = 'user';
+    let capturedDataUrl = null;
+    let isFlashEnabled = true;
+    let remainingFilmCount = 24;
+
+    // Elements
+    const feedScreen = document.getElementById('feedScreen');
+    const photosGrid = document.getElementById('photosGrid');
+    const emptyGalleryState = document.getElementById('emptyGalleryState');
+    const guestCountText = document.getElementById('guestCountText');
+    const photoCountText = document.getElementById('photoCountText');
+    const feedCountBadge = document.getElementById('feedCountBadge');
+
+    const btnLaunchDisposable = document.getElementById('btnLaunchDisposable');
+    const btnFloatingLaunch = document.getElementById('btnFloatingLaunch');
+    const disposableModal = document.getElementById('disposableModal');
+    const btnCloseDisposable = document.getElementById('btnCloseDisposable');
+    const btnFlipLens = document.getElementById('btnFlipLens');
+    const btnToggleFlash = document.getElementById('btnToggleFlash');
+    const flashLed = document.getElementById('flashLed');
+    const flashStatusText = document.getElementById('flashStatusText');
+    const filmFrameNumber = document.getElementById('filmFrameNumber');
+    const btnWindFilm = document.getElementById('btnWindFilm');
+    const btnShutter = document.getElementById('btnShutter');
+    const btnOpenGalleryPicker = document.getElementById('btnOpenGalleryPicker');
+    const btnTriggerUpload = document.getElementById('btnTriggerUpload');
+    const fileInput = document.getElementById('fileInput');
+
+    const video = document.getElementById('videoElement');
+    const flashOverlay = document.getElementById('flashOverlay');
+    const countdownOverlay = document.getElementById('countdownOverlay');
+    const countdownNumber = document.getElementById('countdownNumber');
+    const liveDateStamp = document.getElementById('liveDateStamp');
+    const cameraNotice = document.getElementById('cameraNotice');
+    const btnRetryCamera = document.getElementById('btnRetryCamera');
+
+    const cameraBodyWrapper = document.getElementById('cameraBodyWrapper');
+    const developedFormWrapper = document.getElementById('developedFormWrapper');
+    const previewImage = document.getElementById('previewImage');
+    const uploadForm = document.getElementById('uploadForm');
+    const guestNameInput = document.getElementById('guestName');
+    const guestMessageInput = document.getElementById('guestMessage');
+    const btnRetakeFilm = document.getElementById('btnRetakeFilm');
+    const btnSubmitFilm = document.getElementById('btnSubmitFilm');
+    const btnSubmitText = document.getElementById('btnSubmitText');
+    const btnSubmitSpinner = document.getElementById('btnSubmitSpinner');
+    const filmCanvas = document.getElementById('filmCanvas');
+
+    // Detail Modal Elements
+    const detailModal = document.getElementById('detailModal');
+    const btnCloseDetail = document.getElementById('btnCloseDetail');
+    const detailImg = document.getElementById('detailImg');
+    const detailGuestName = document.getElementById('detailGuestName');
+    const detailAvatar = document.getElementById('detailAvatar');
+    const detailTimestamp = document.getElementById('detailTimestamp');
+    const detailMessage = document.getElementById('detailMessage');
+    const btnDownloadSingle = document.getElementById('btnDownloadSingle');
+
+    // Invite Modal Elements
+    const btnInvite = document.getElementById('btnInvite');
+    const inviteModal = document.getElementById('inviteModal');
+    const btnCloseInvite = document.getElementById('btnCloseInvite');
+    const btnCopyLink = document.getElementById('btnCopyLink');
+    const inviteQrImg = document.getElementById('inviteQrImg');
+
+    // ==========================================
+    // WEB AUDIO API ANALOG SOUND SYNTHESIZER
+    // ==========================================
+    let audioCtx = null;
+    function getAudioContext() {
+      if (!audioCtx) {
+        const AudioClass = window.AudioContext || window.webkitAudioContext;
+        if (AudioClass) audioCtx = new AudioClass();
+      }
+      if (audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+      return audioCtx;
+    }
+
+    // 1. Shutter Click Sound (Crisp mechanical snap)
+    function playShutterSound() {
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        // Metallic mechanical click
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(320, now);
+        osc.frequency.exponentialRampToValueAtTime(40, now + 0.08);
+
+        gain.gain.setValueAtTime(0.7, now);
+        gain.gain.exponentialRampToValueAtTime(0.01, now + 0.08);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.09);
+
+        // Noise snap
+        const bufferSize = ctx.sampleRate * 0.05;
+        const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+        const data = buffer.getChannelData(0);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+        const noise = ctx.createBufferSource();
+        noise.buffer = buffer;
+        const noiseGain = ctx.createGain();
+        noiseGain.gain.setValueAtTime(0.5, now);
+        noiseGain.gain.exponentialRampToValueAtTime(0.01, now + 0.05);
+
+        noise.connect(noiseGain);
+        noiseGain.connect(ctx.destination);
+        noise.start(now);
+      } catch (e) {
+        console.warn('Audio err:', e);
+      }
+    }
+
+    // 2. Film Winder Ratchet Sound (Krrr-krrrk)
+    function playWinderSound() {
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const clicks = 5;
+
+        for (let i = 0; i < clicks; i++) {
+          const t = now + (i * 0.06);
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+
+          osc.type = 'sawtooth';
+          osc.frequency.setValueAtTime(140 + (i * 20), t);
+
+          gain.gain.setValueAtTime(0.3, t);
+          gain.gain.exponentialRampToValueAtTime(0.001, t + 0.04);
+
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(t);
+          osc.stop(t + 0.04);
+        }
+      } catch (e) {}
+    }
+
+    // 3. Flash Capacitor Charge Sound
+    function playFlashChargeSound() {
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, now);
+        osc.frequency.exponentialRampToValueAtTime(3200, now + 0.5);
+
+        gain.gain.setValueAtTime(0.05, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.5);
+      } catch (e) {}
+    }
+
+    // Flash Toggle
+    btnToggleFlash.addEventListener('click', () => {
+      isFlashEnabled = !isFlashEnabled;
+      if (isFlashEnabled) {
+        flashLed.className = 'w-2.5 h-2.5 rounded-full bg-amber-400 animate-pulse shadow-[0_0_8px_#f59e0b]';
+        flashStatusText.textContent = 'FLASH: ON';
+        flashStatusText.className = 'text-[11px] font-mono font-bold text-amber-200';
+        playFlashChargeSound();
+      } else {
+        flashLed.className = 'w-2.5 h-2.5 rounded-full bg-neutral-600';
+        flashStatusText.textContent = 'FLASH: OFF';
+        flashStatusText.className = 'text-[11px] font-mono font-bold text-neutral-400';
+      }
+    });
+
+    // Mechanical Winder Click
+    btnWindFilm.addEventListener('click', () => {
+      playWinderSound();
+      remainingFilmCount = Math.max(1, remainingFilmCount - 1);
+      filmFrameNumber.textContent = remainingFilmCount;
+    });
+
+    // Retro Date Stamp String Generator ('26 10 28)
+    function getRetroDateStampString() {
+      const now = new Date();
+      const yy = String(now.getFullYear()).slice(-2);
+      const mm = String(now.getMonth() + 1).padStart(2, '0');
+      const dd = String(now.getDate()).padStart(2, '0');
+      return `'${yy} ${mm} ${dd}`;
+    }
+    liveDateStamp.textContent = getRetroDateStampString();
+
+    // ==========================================
+    // GALLERY FEED LOGIC
+    // ==========================================
+    async function loadGalleryPhotos() {
+      try {
+        const res = await fetch('/api/photos');
+        if (res.ok) {
+          photos = await res.json();
+          renderPhotoFeed();
+        }
+      } catch (err) {
+        console.error('Failed to load photos:', err);
+      }
+    }
+
+    function renderPhotoFeed() {
+      photoCountText.textContent = `${photos.length} Roll Foto`;
+      feedCountBadge.textContent = `${photos.length} Foto`;
+      const uniqueGuests = new Set(photos.map(p => p.guest_name)).size;
+      guestCountText.textContent = `${uniqueGuests} tamu bergabung`;
+
+      if (photos.length > 0) {
+        emptyGalleryState.classList.add('hidden');
+        photosGrid.classList.remove('hidden');
+      } else {
+        emptyGalleryState.classList.remove('hidden');
+        photosGrid.classList.add('hidden');
+        return;
+      }
+
+      photosGrid.innerHTML = '';
+      photos.forEach((photo) => {
+        const card = document.createElement('div');
+        card.className = 'group relative aspect-[3/4] rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-800/80 shadow-md cursor-pointer transition transform active:scale-98 hover:brightness-105';
+        card.innerHTML = `
+          <img src="${photo.image_url}" alt="${photo.guest_name}" class="w-full h-full object-cover" loading="lazy" />
+          <div class="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-black/30 pointer-events-none"></div>
+          
+          <!-- Top Left Guest Name Tag -->
+          <span class="absolute top-2.5 left-2.5 text-xs font-medium text-white/95 drop-shadow-[0_1px_3px_rgba(0,0,0,0.8)] tracking-wide">
+            ${escapeHtml(photo.guest_name)}
+          </span>
+
+          <!-- Bottom Retro Stamp -->
+          <span class="absolute bottom-2 right-2 text-[10px] font-retro-stamp font-bold retro-date-stamp drop-shadow">
+            ${getRetroDateStampString()}
+          </span>
+        `;
+
+        card.addEventListener('click', () => openPhotoDetail(photo));
+        photosGrid.appendChild(card);
+      });
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      const div = document.createElement('div');
+      div.textContent = text;
+      return div.innerHTML;
+    }
+
+    function openPhotoDetail(photo) {
+      detailImg.src = photo.image_url;
+      detailGuestName.textContent = photo.guest_name;
+      detailAvatar.textContent = (photo.guest_name || 'R').charAt(0).toUpperCase();
+      detailTimestamp.textContent = photo.created_at || 'Momen Pernikahan';
+      detailMessage.textContent = `“${photo.message || 'Selamat menempuh hidup baru!'}”`;
+      btnDownloadSingle.href = photo.image_url;
+      detailModal.classList.remove('hidden');
+    }
+
+    btnCloseDetail.addEventListener('click', () => {
+      detailModal.classList.add('hidden');
+    });
+
+    // ==========================================
+    // DISPOSABLE CAMERA LIFECYCLE
+    // ==========================================
+    function openDisposableCamera() {
+      disposableModal.classList.remove('hidden');
+      document.body.style.overflow = 'hidden';
+      resetShootingView();
+      startCamera();
+      if (isFlashEnabled) playFlashChargeSound();
+    }
+
+    function closeDisposableCamera() {
+      disposableModal.classList.add('hidden');
+      document.body.style.overflow = '';
+      stopCamera();
+    }
+
+    btnLaunchDisposable.addEventListener('click', openDisposableCamera);
+    btnFloatingLaunch.addEventListener('click', openDisposableCamera);
+    btnCloseDisposable.addEventListener('click', closeDisposableCamera);
+
+    function resetShootingView() {
+      cameraBodyWrapper.classList.remove('hidden');
+      developedFormWrapper.classList.add('hidden');
+      capturedDataUrl = null;
+    }
+
+    // Start Video Stream
+    async function startCamera() {
+      stopCamera();
+
+      if (currentFacingMode === 'user') {
+        video.classList.add('mirror');
+      } else {
+        video.classList.remove('mirror');
+      }
+
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        showCameraNotice();
+        return;
+      }
+
+      const tiers = [
+        { video: { facingMode: { ideal: currentFacingMode }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+        { video: { facingMode: currentFacingMode }, audio: false },
+        { video: true, audio: false }
+      ];
+
+      let stream = null;
+      for (const c of tiers) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia(c);
+          if (stream) break;
+        } catch (e) {}
+      }
+
+      if (!stream) {
+        showCameraNotice();
+        return;
+      }
+
+      currentStream = stream;
+      video.srcObject = stream;
+      video.muted = true;
+      video.setAttribute('playsinline', '');
+      video.setAttribute('muted', '');
+
+      try {
+        await video.play();
+        cameraNotice.classList.add('hidden');
+      } catch (err) {
+        showCameraNotice();
+      }
+    }
+
+    function stopCamera() {
+      if (currentStream) {
+        currentStream.getTracks().forEach(t => t.stop());
+        currentStream = null;
+      }
+    }
+
+    function showCameraNotice() {
+      cameraNotice.classList.remove('hidden');
+    }
+
+    btnRetryCamera.addEventListener('click', () => {
+      startCamera();
+    });
+
+    btnFlipLens.addEventListener('click', () => {
+      currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+      startCamera();
+    });
+
+    // Gallery Picker Fallback
+    btnOpenGalleryPicker.addEventListener('click', () => fileInput.click());
+    btnTriggerUpload.addEventListener('click', () => fileInput.click());
+
+    fileInput.addEventListener('change', (e) => {
+      const file = e.target.files && e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const img = new Image();
+        img.onload = () => {
+          processAnalogFilmFrame(img, false);
+          fileInput.value = '';
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // ==========================================
+    // SHUTTER & 35mm ANALOG FILM PROCESSING
+    // ==========================================
+    let isShooting = false;
+    btnShutter.addEventListener('click', () => {
+      if (isShooting) return;
+
+      if (!currentStream || video.readyState < 2) {
+        fileInput.click();
+        return;
+      }
+
+      isShooting = true;
+      countdownOverlay.classList.remove('hidden');
+      let count = 3;
+      countdownNumber.textContent = count;
+
+      const countdownInterval = setInterval(() => {
+        count--;
+        if (count > 0) {
+          countdownNumber.textContent = count;
+        } else {
+          clearInterval(countdownInterval);
+          countdownOverlay.classList.add('hidden');
+          isShooting = false;
+          executeShutterCapture();
+        }
+      }, 1000);
+    });
+
+    function executeShutterCapture() {
+      // Audio Shutter
+      playShutterSound();
+
+      // Optical Flash Effect
+      if (isFlashEnabled) {
+        flashOverlay.classList.remove('opacity-0');
+        flashOverlay.classList.add('shutter-flash');
+        setTimeout(() => {
+          flashOverlay.classList.remove('shutter-flash');
+          flashOverlay.classList.add('opacity-0');
+        }, 300);
+      }
+
+      // Decrement film frame counter
+      remainingFilmCount = Math.max(1, remainingFilmCount - 1);
+      filmFrameNumber.textContent = remainingFilmCount;
+
+      // Process Film on Canvas
+      processAnalogFilmFrame(video, currentFacingMode === 'user');
+    }
+
+    // 35mm Analog Film Grain & Retro Date Stamp Renderer
+    function processAnalogFilmFrame(sourceMedia, mirror) {
+      const targetW = 720;
+      const targetH = 960;
+      filmCanvas.width = targetW;
+      filmCanvas.height = targetH;
+      const ctx = filmCanvas.getContext('2d');
+
+      const srcW = sourceMedia.videoWidth || sourceMedia.naturalWidth || sourceMedia.width;
+      const srcH = sourceMedia.videoHeight || sourceMedia.naturalHeight || sourceMedia.height;
+
+      const srcRatio = srcW / srcH;
+      const targetRatio = targetW / targetH;
+      let renderW, renderH, cropX, cropY;
+
+      if (srcRatio > targetRatio) {
+        renderH = srcH;
+        renderW = srcH * targetRatio;
+        cropX = (srcW - renderW) / 2;
+        cropY = 0;
+      } else {
+        renderW = srcW;
+        renderH = srcW / targetRatio;
+        cropX = 0;
+        cropY = (srcH - renderH) / 2;
+      }
+
+      ctx.save();
+      if (mirror) {
+        ctx.translate(targetW, 0);
+        ctx.scale(-1, 1);
+      }
+      ctx.drawImage(sourceMedia, cropX, cropY, renderW, renderH, 0, 0, targetW, targetH);
+      ctx.restore();
+
+      // 1. Color Grading: Warm Vintage Film Tone (Kodak Portra warm feel)
+      ctx.save();
+      ctx.fillStyle = 'rgba(255, 235, 190, 0.08)'; // Warm golden wash
+      ctx.fillRect(0, 0, targetW, targetH);
+      ctx.restore();
+
+      // 2. Film Grain Texture Shader
+      const imgData = ctx.getImageData(0, 0, targetW, targetH);
+      const data = imgData.data;
+      const grainIntensity = 14;
+      for (let i = 0; i < data.length; i += 4) {
+        const noise = (Math.random() - 0.5) * grainIntensity;
+        data[i] = Math.min(255, Math.max(0, data[i] + noise));
+        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
+        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
+      }
+      ctx.putImageData(imgData, 0, 0);
+
+      // 3. Vignette & Bottom Shadow
+      ctx.save();
+      const vignette = ctx.createLinearGradient(0, targetH * 0.7, 0, targetH);
+      vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vignette.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, targetH * 0.7, targetW, targetH * 0.3);
+
+      // 4. Wedding Branding (Minimalist film edge typography)
+      ctx.fillStyle = '#ffffff';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      ctx.shadowBlur = 8;
+      ctx.font = '500 24px "Newsreader", Georgia, serif';
+      ctx.fillText('The Wedding of Romeo & Juliet', 36, targetH - 45);
+
+      ctx.shadowBlur = 0;
+      ctx.fillStyle = '#cbd5e1';
+      ctx.font = '600 11px "Plus Jakarta Sans", sans-serif';
+      ctx.letterSpacing = '3px';
+      ctx.fillText('DISPOSABLE 35mm • ROMEO & JULIET', 36, targetH - 24);
+
+      // 5. ICONIC RETRO ORANGE DIGITAL DATE STAMP ('26 10 28)
+      const dateString = getRetroDateStampString();
+      ctx.save();
+      ctx.font = 'bold 34px "Share Tech Mono", "VT323", monospace';
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#ff8c00';
+      ctx.shadowColor = '#ff6a00';
+      ctx.shadowBlur = 10;
+      ctx.fillText(dateString, targetW - 36, targetH - 30);
+      ctx.restore();
+
+      ctx.restore();
+
+      // Compress client-side to lightweight JPEG
+      capturedDataUrl = filmCanvas.toDataURL('image/jpeg', 0.75);
+
+      // Display Developed Print in Step B
+      previewImage.src = capturedDataUrl;
+      cameraBodyWrapper.classList.add('hidden');
+      developedFormWrapper.classList.remove('hidden');
+      stopCamera();
+
+      // Play automatic film winder sound after shot
+      setTimeout(() => {
+        playWinderSound();
+      }, 400);
+    }
+
+    // Retake Shot
+    btnRetakeFilm.addEventListener('click', () => {
+      resetShootingView();
+      startCamera();
+    });
+
+    // Submit Photo & Message
+    uploadForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+
+      const guest_name = guestNameInput.value.trim();
+      const message = guestMessageInput.value.trim();
+
+      if (!guest_name || !message || !capturedDataUrl) {
+        alert('Mohon isi nama dan ucapan Anda.');
+        return;
+      }
+
+      btnSubmitFilm.disabled = true;
+      btnSubmitText.textContent = 'Mencuci Film...';
+      btnSubmitSpinner.classList.remove('hidden');
+
+      try {
+        const response = await fetch('/api/upload', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            guest_name,
+            message,
+            image_base64: capturedDataUrl
+          })
+        });
+
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          guestNameInput.value = '';
+          guestMessageInput.value = '';
+
+          closeDisposableCamera();
+          photos.unshift(result.data);
+          renderPhotoFeed();
+
+          alert('🎉 Foto berhasil disimpan ke galeri pernikahan!');
+        } else {
+          alert('Gagal mengirim: ' + (result.error || 'Terjadi kesalahan'));
+        }
+      } catch (err) {
+        console.error(err);
+        alert('Gagal mengirim foto. Pastikan koneksi stabil.');
+      } finally {
+        btnSubmitFilm.disabled = false;
+        btnSubmitText.textContent = 'Simpan & Unggah Foto';
+        btnSubmitSpinner.classList.add('hidden');
+      }
+    });
+
+    // Invite Modal
+    btnInvite.addEventListener('click', () => {
+      inviteQrImg.src = `/api/qr?url=${encodeURIComponent(window.location.href)}`;
+      inviteModal.classList.remove('hidden');
+    });
+
+    btnCloseInvite.addEventListener('click', () => {
+      inviteModal.classList.add('hidden');
+    });
+
+    btnCopyLink.addEventListener('click', () => {
+      navigator.clipboard.writeText(window.location.href);
+      btnCopyLink.textContent = '✓ Tautan Tersalin!';
+      setTimeout(() => {
+        btnCopyLink.textContent = 'Salin Tautan (Copy Link)';
+        inviteModal.classList.add('hidden');
+      }, 1500);
+    });
+
+    document.getElementById('btnSaveGallery').addEventListener('click', () => {
+      alert('Tips: Klik pada foto di roll galeri untuk menyimpan foto ke HP Anda!');
+    });
+
+    // Real-time socket broadcast
+    const socket = io();
+    socket.on('new_photo', (newPhoto) => {
+      if (!photos.some(p => p.id === newPhoto.id)) {
+        photos.unshift(newPhoto);
+        renderPhotoFeed();
+      }
+    });
+
+    // Initial load
+    window.addEventListener('DOMContentLoaded', () => {
+      loadGalleryPhotos();
+    });
+  </script>
+</body>
+</html>

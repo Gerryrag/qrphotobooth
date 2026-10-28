@@ -79,9 +79,9 @@
       </div>
 
       <div class="flex items-center gap-2">
-        <span class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-[11px] font-semibold tracking-wide">
-          <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
-          LIVE 35mm
+        <span class="flex items-center gap-1.5 px-3 py-1 rounded-full bg-neutral-900 border border-neutral-800 text-amber-300 text-[11px] font-semibold tracking-wide">
+          <span class="w-1.5 h-1.5 rounded-full bg-amber-400"></span>
+          WEDDING 35mm
         </span>
         <button id="btnSettingsInfo" class="w-10 h-10 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-300 flex items-center justify-center hover:bg-neutral-800 transition active:scale-95" title="Info">
           <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -105,7 +105,7 @@
             <svg class="w-3.5 h-3.5 text-neutral-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
             </svg>
-            <span>Live Celebration Today</span>
+            <span>Wedding Celebration</span>
           </div>
 
           <div class="flex items-center gap-2">
@@ -393,7 +393,7 @@
               type="submit" 
               id="btnSubmitFilm" 
               class="flex-[2] py-3 px-4 rounded-xl bg-gradient-to-r from-amber-400 via-amber-200 to-amber-400 hover:brightness-110 text-neutral-950 text-xs font-bold transition active:scale-98 flex items-center justify-center gap-1.5 shadow-lg shadow-amber-400/20">
-              <span id="btnSubmitText">Kirim ke Layar Utama</span>
+              <span id="btnSubmitText">Simpan & Unggah Foto</span>
               <svg id="btnSubmitSpinner" class="w-4 h-4 animate-spin hidden" fill="none" viewBox="0 0 24 24">
                 <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
                 <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
@@ -478,7 +478,7 @@
         <img id="inviteQrImg" src="/api/qr" alt="QR Code" class="w-full h-full object-contain" />
       </div>
 
-      <p class="text-xs text-neutral-300 mb-3">Scan QR code ini untuk membuka kamera sekali pakai dan berfoto ke layar proyektor!</p>
+      <p class="text-xs text-neutral-300 mb-3">Scan QR code ini untuk membuka kamera sekali pakai dan mengabadikan momen pernikahan!</p>
 
       <button id="btnCopyLink" class="w-full py-2.5 px-4 rounded-xl bg-white text-neutral-950 text-xs font-bold transition active:scale-98">
         Salin Tautan (Copy Link)
@@ -1090,7 +1090,7 @@
           photos.unshift(result.data);
           renderPhotoFeed();
 
-          alert('🎉 Foto disposable berhasil dikirim ke layar proyektor!');
+          alert('🎉 Foto berhasil disimpan ke galeri pernikahan!');
         } else {
           alert('Gagal mengirim: ' + (result.error || 'Terjadi kesalahan'));
         }
@@ -1099,7 +1099,7 @@
         alert('Gagal mengirim foto. Pastikan koneksi stabil.');
       } finally {
         btnSubmitFilm.disabled = false;
-        btnSubmitText.textContent = 'Kirim ke Layar Utama';
+        btnSubmitText.textContent = 'Simpan & Unggah Foto';
         btnSubmitSpinner.classList.add('hidden');
       }
     });

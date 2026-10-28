@@ -112,7 +112,7 @@ function getLocalNetworkAddresses() {
 
 // Routes
 app.get('/', (req, res) => {
-  res.redirect('/live.html');
+  res.redirect('/index.html');
 });
 
 // GET /api/server-info: Returns IP and recommended camera URL
