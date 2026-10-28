@@ -1,3 +1,4 @@
+require('dotenv').config();
 const express = require('express');
 const http = require('http');
 const https = require('https');
@@ -179,8 +180,41 @@ app.get('/api/photos', (req, res) => {
   });
 });
 
+// Helper to save photo (Google Drive if configured, otherwise local uploads folder)
+async function savePhotoFile(filename, buffer, image_base64) {
+  const gdriveWebhook = process.env.GOOGLE_DRIVE_WEBHOOK_URL;
+  
+  if (gdriveWebhook) {
+    try {
+      console.log(`[Google Drive] Mengunggah ${filename} ke Google Drive...`);
+      const response = await fetch(gdriveWebhook, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filename,
+          image_base64
+        })
+      });
+
+      const resJson = await response.json();
+      if (resJson && resJson.success && resJson.imageUrl) {
+        console.log(`[Google Drive] Sukses! File tersimpan di Google Drive: ${resJson.imageUrl}`);
+        return resJson.imageUrl;
+      }
+      console.warn('[Google Drive] Webhook tidak mengembalikan imageUrl, menggunakan penyimpanan lokal:', resJson);
+    } catch (gdriveErr) {
+      console.error('[Google Drive] Gagal kirim ke Google Drive webhook, beralih ke lokal:', gdriveErr.message);
+    }
+  }
+
+  // Local filesystem fallback
+  const filePath = path.join(uploadsDir, filename);
+  await fs.promises.writeFile(filePath, buffer);
+  return `/uploads/${filename}`;
+}
+
 // POST /api/upload: Upload photo with message and guest name
-app.post('/api/upload', (req, res) => {
+app.post('/api/upload', async (req, res) => {
   try {
     const { guest_name, message, image_base64 } = req.body;
 
@@ -200,45 +234,39 @@ app.post('/api/upload', (req, res) => {
     }
 
     const filename = `photo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
-    const filePath = path.join(uploadsDir, filename);
 
-    fs.writeFile(filePath, buffer, (writeErr) => {
-      if (writeErr) {
-        console.error('Failed to save photo file:', writeErr);
-        return res.status(500).json({ error: 'Failed to save image file' });
+    // Save photo to Google Drive or Local Disk
+    const imageUrl = await savePhotoFile(filename, buffer, image_base64);
+
+    const insertQuery = `
+      INSERT INTO photos (guest_name, message, image_url, created_at)
+      VALUES (?, ?, ?, datetime('now', 'localtime'))
+    `;
+
+    db.run(insertQuery, [guest_name.trim(), message.trim(), imageUrl], function (dbErr) {
+      if (dbErr) {
+        console.error('Failed to insert photo record into DB:', dbErr.message);
+        return res.status(500).json({ error: 'Failed to record photo in database' });
       }
 
-      const imageUrl = `/uploads/${filename}`;
-      const insertQuery = `
-        INSERT INTO photos (guest_name, message, image_url, created_at)
-        VALUES (?, ?, ?, datetime('now', 'localtime'))
-      `;
-
-      db.run(insertQuery, [guest_name.trim(), message.trim(), imageUrl], function (dbErr) {
-        if (dbErr) {
-          console.error('Failed to insert photo record into DB:', dbErr.message);
-          return res.status(500).json({ error: 'Failed to record photo in database' });
+      const newId = this.lastID;
+      db.get('SELECT * FROM photos WHERE id = ?', [newId], (selectErr, row) => {
+        if (selectErr || !row) {
+          console.error('Failed to query inserted row:', selectErr);
+          const fallbackData = {
+            id: newId,
+            guest_name: guest_name.trim(),
+            message: message.trim(),
+            image_url: imageUrl,
+            created_at: new Date().toISOString()
+          };
+          io.emit('new_photo', fallbackData);
+          return res.json({ success: true, data: fallbackData });
         }
 
-        const newId = this.lastID;
-        db.get('SELECT * FROM photos WHERE id = ?', [newId], (selectErr, row) => {
-          if (selectErr || !row) {
-            console.error('Failed to query inserted row:', selectErr);
-            const fallbackData = {
-              id: newId,
-              guest_name: guest_name.trim(),
-              message: message.trim(),
-              image_url: imageUrl,
-              created_at: new Date().toISOString()
-            };
-            io.emit('new_photo', fallbackData);
-            return res.json({ success: true, data: fallbackData });
-          }
-
-          // Broadcast immediately to all connected clients
-          io.emit('new_photo', row);
-          return res.json({ success: true, data: row });
-        });
+        // Broadcast immediately to all connected clients
+        io.emit('new_photo', row);
+        return res.json({ success: true, data: row });
       });
     });
   } catch (err) {
