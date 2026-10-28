@@ -1,0 +1,16 @@
+{
+  "name": "qr-live-photobooth",
+  "version": "1.0.0",
+  "description": "QR Live Photobooth & Wedding Gallery",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.19.2",
+    "qrcode": "^1.5.4",
+    "socket.io": "^4.7.5",
+    "sqlite3": "^5.1.7"
+  }
+}

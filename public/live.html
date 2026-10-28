@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Live Wedding Gallery & Photobooth - Romeo & Juliet</title>
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Socket.io Client -->
+  <script src="/socket.io/socket.io.js"></script>
+  <!-- Google Fonts: Cormorant Garamond & Plus Jakarta Sans -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,500;1,600&family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Plus Jakarta Sans', sans-serif;
+      user-select: none;
+    }
+    .font-serif-luxury {
+      font-family: 'Cormorant Garamond', Georgia, serif;
+    }
+    /* Photo spotlight transition classes */
+    .fade-enter {
+      opacity: 0;
+      transform: scale(0.97);
+    }
+    .fade-enter-active {
+      opacity: 1;
+      transform: scale(1);
+      transition: opacity 600ms cubic-bezier(0.16, 1, 0.3, 1), transform 600ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    /* Ambient gold glow pulse */
+    @keyframes pulse-glow {
+      0%, 100% { box-shadow: 0 0 25px rgba(245, 158, 11, 0.2); }
+      50% { box-shadow: 0 0 45px rgba(245, 158, 11, 0.45); }
+    }
+    .ambient-glow {
+      animation: pulse-glow 4s infinite ease-in-out;
+    }
+    /* New photo alert banner pulse */
+    @keyframes banner-pop {
+      0% { transform: translate(-50%, -20px) scale(0.9); opacity: 0; }
+      15% { transform: translate(-50%, 0) scale(1.05); opacity: 1; }
+      25% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+      85% { transform: translate(-50%, 0) scale(1); opacity: 1; }
+      100% { transform: translate(-50%, -20px) scale(0.9); opacity: 0; }
+    }
+    .banner-animated {
+      animation: banner-pop 6s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+  </style>
+</head>
+<body class="h-screen w-screen overflow-hidden bg-gradient-to-br from-slate-950 via-slate-900 to-amber-950 text-white flex flex-col justify-between p-4 md:p-6 relative">
+
+  <!-- Floating New Photo Alert Banner -->
+  <div id="newPhotoBanner" class="fixed top-6 left-1/2 -translate-x-1/2 z-50 pointer-events-none hidden">
+    <div class="px-6 py-3 rounded-full bg-gradient-to-r from-amber-500 via-amber-300 to-amber-500 text-slate-950 font-bold text-base md:text-lg shadow-2xl shadow-amber-400/50 flex items-center gap-3 border-2 border-white/60">
+      <span class="text-xl">✨</span>
+      <span>FOTO BARU MASUK!</span>
+      <span class="text-xl">✨</span>
+    </div>
+  </div>
+
+  <!-- Header Bar -->
+  <header class="flex items-center justify-between z-10 border-b border-amber-500/20 pb-3">
+    <!-- Wedding Title & Couple Name -->
+    <div class="flex items-center gap-4">
+      <div class="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-400/40 flex items-center justify-center text-amber-300 font-serif-luxury text-xl font-bold">
+        R&J
+      </div>
+      <div>
+        <p class="text-[11px] uppercase tracking-[0.3em] text-amber-300/80 font-semibold">Live Wedding Photobooth</p>
+        <h1 class="text-xl md:text-2xl font-serif-luxury font-bold text-amber-100 tracking-wide">Romeo & Juliet</h1>
+      </div>
+    </div>
+
+    <!-- Live Status, Clock & Actions -->
+    <div class="flex items-center gap-3 md:gap-5 text-sm">
+      <!-- Live Clock -->
+      <div id="liveClock" class="text-slate-300/80 text-xs md:text-sm tracking-wider font-mono">
+        --:--:--
+      </div>
+
+      <!-- Socket Connection Badge -->
+      <div id="socketBadge" class="flex items-center gap-2 px-3 py-1 rounded-full bg-slate-800/80 border border-slate-700 text-xs text-slate-300">
+        <span id="socketDot" class="w-2 h-2 rounded-full bg-amber-400 animate-pulse"></span>
+        <span id="socketText">Menghubungkan...</span>
+      </div>
+
+      <!-- Audio Mute/Unmute Toggle -->
+      <button id="btnAudioToggle" class="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-amber-300 transition" title="Aktifkan Suara Chime">
+        <svg id="iconAudioOn" class="w-5 h-5 hidden" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+        </svg>
+        <svg id="iconAudioOff" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z" />
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 14l2-2m0 0l2-2m-2 2l-2-2m2 2l2 2" />
+        </svg>
+      </button>
+
+      <!-- Fullscreen Toggle Button -->
+      <button id="btnFullscreen" class="p-2 rounded-lg bg-slate-800/80 hover:bg-slate-700 border border-slate-700 text-amber-300 transition" title="Layar Penuh (Projector Mode)">
+        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 8V4m0 0h4M4 4l5 5m11-5h-4m4 0v4m0 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <!-- Main Showcase Container -->
+  <main class="flex-1 flex flex-col lg:flex-row items-center justify-between gap-6 my-4 overflow-hidden">
+    
+    <!-- LEFT / CENTER: Spotlight Card (Active Photo & Message) -->
+    <div class="flex-1 w-full h-full flex items-center justify-center overflow-hidden">
+      
+      <!-- Spotlight Active Card -->
+      <div id="spotlightCard" class="w-full max-w-4xl h-full max-h-[82vh] bg-slate-900/60 backdrop-blur-md rounded-3xl border border-amber-500/30 p-4 md:p-6 flex flex-col md:flex-row items-center gap-6 md:gap-8 ambient-glow transition-all duration-500">
+        
+        <!-- Framed Photo Container (Portrait 3:4) -->
+        <div class="h-full max-h-[48vh] md:max-h-[72vh] aspect-[3/4] rounded-2xl overflow-hidden border border-amber-400/40 shadow-2xl shadow-black/80 flex-shrink-0 bg-slate-950 flex items-center justify-center relative">
+          <img id="spotlightImg" src="" alt="Spotlight Wedding Photo" class="w-full h-full object-cover transition-opacity duration-500 opacity-100" />
+          <div id="imgPlaceholder" class="text-center p-6 hidden">
+            <span class="text-4xl">📸</span>
+            <p class="text-sm text-slate-400 mt-2 font-medium">Belum ada foto yang masuk</p>
+          </div>
+        </div>
+
+        <!-- Guest Wish & Info -->
+        <div class="flex-1 flex flex-col justify-between h-full py-2 max-w-xl text-left">
+          
+          <!-- Top badge -->
+          <div>
+            <div class="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-400/30 text-amber-300 text-xs font-semibold uppercase tracking-wider mb-3">
+              <span>💖 Ucapan & Doa Tamu</span>
+            </div>
+
+            <!-- Guest Message Quote -->
+            <div class="relative my-2">
+              <span class="absolute -top-4 -left-3 text-5xl font-serif text-amber-500/30 select-none">“</span>
+              <p id="spotlightMessage" class="text-lg md:text-2xl lg:text-3xl font-serif-luxury italic font-normal text-amber-50 leading-relaxed pl-4">
+                Memuat foto dan ucapan tamu...
+              </p>
+              <span class="text-5xl font-serif text-amber-500/30 select-none leading-none -ml-1">”</span>
+            </div>
+          </div>
+
+          <!-- Bottom Guest Signoff & Time -->
+          <div class="border-t border-amber-500/20 pt-4 mt-2 flex items-center justify-between">
+            <div>
+              <p class="text-xs uppercase tracking-widest text-slate-400">Dari:</p>
+              <h3 id="spotlightName" class="text-xl md:text-2xl font-bold text-amber-300 font-serif-luxury mt-0.5">
+                --
+              </h3>
+            </div>
+            <div class="text-right">
+              <p class="text-xs uppercase tracking-widest text-slate-400">Waktu:</p>
+              <p id="spotlightTime" class="text-xs md:text-sm font-mono text-slate-300 mt-0.5">
+                --
+              </p>
+            </div>
+          </div>
+
+        </div>
+
+      </div>
+
+      <!-- Empty State Card (if zero photos) -->
+      <div id="emptyStateCard" class="hidden text-center max-w-lg p-10 rounded-3xl bg-slate-900/60 border border-amber-500/20 backdrop-blur-md">
+        <div class="w-20 h-20 mx-auto rounded-full bg-amber-500/10 border border-amber-400/30 flex items-center justify-center text-3xl mb-4">
+          💍
+        </div>
+        <h2 class="text-3xl font-serif-luxury font-bold text-amber-200">The Wedding of Romeo & Juliet</h2>
+        <p class="text-sm text-slate-300 mt-3 leading-relaxed">
+          Selamat datang para tamu undangan yang berbahagia. Jadilah yang pertama mengirimkan foto kenangan dan doa terbaik melalui QR code di samping!
+        </p>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: QR Code Join Widget & Recent Photos Strip -->
+    <div class="w-full lg:w-80 xl:w-96 flex flex-col gap-4 flex-shrink-0">
+      
+      <!-- QR Code Join Card -->
+      <div class="bg-slate-900/70 backdrop-blur-md rounded-2xl border border-amber-500/30 p-4 xl:p-5 flex flex-col items-center text-center shadow-xl">
+        <div class="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/20 text-amber-300 text-xs font-bold tracking-wide uppercase mb-3">
+          <span>📲 Scan & Kirim Foto</span>
+        </div>
+
+        <!-- Dynamic QR Code Image Container -->
+        <div class="p-2.5 bg-white rounded-xl shadow-lg shadow-black/40 mb-3 border border-amber-200">
+          <img id="qrCodeImg" src="" alt="Scan QR Code to Open Camera" class="w-44 h-44 xl:w-48 xl:h-48 object-contain" />
+        </div>
+
+        <p class="text-xs text-slate-200 font-medium leading-relaxed px-2">
+          Arahkan kamera HP ke QR Code di atas untuk mengambil foto & mengirim ucapan ke layar ini!
+        </p>
+
+        <!-- Direct URL link display -->
+        <div class="mt-2.5 w-full bg-slate-950/80 rounded-lg py-1.5 px-2 border border-slate-800 text-[11px] font-mono text-amber-200/90 truncate select-all" id="cameraUrlDisplay">
+          http://localhost:3000/camera.html
+        </div>
+      </div>
+
+      <!-- Recent Photos Strip (Last 6) -->
+      <div class="bg-slate-900/70 backdrop-blur-md rounded-2xl border border-amber-500/20 p-4 flex flex-col">
+        <div class="flex items-center justify-between mb-2.5">
+          <p class="text-xs font-semibold uppercase tracking-wider text-amber-300/90">Galeri Terbaru</p>
+          <span id="photoCountBadge" class="text-[11px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">0 Foto</span>
+        </div>
+
+        <div id="recentGrid" class="grid grid-cols-6 lg:grid-cols-3 gap-2">
+          <!-- Thumbnail items inserted dynamically -->
+        </div>
+      </div>
+
+    </div>
+
+  </main>
+
+  <!-- Footer Notice -->
+  <footer class="flex items-center justify-between text-[11px] text-slate-400 border-t border-amber-500/10 pt-2">
+    <div>Slideshow berputar otomatis setiap 5 detik • Interupsi realtime saat ada foto baru</div>
+    <div class="font-serif-luxury text-amber-300/80">Romeo & Juliet Wedding Celebration</div>
+  </footer>
+
+  <script>
+    // State
+    let photos = [];
+    let currentIndex = 0;
+    let slideshowTimer = null;
+    let isInterrupted = false;
+    let audioContext = null;
+    let audioUnlocked = false;
+
+    // Elements
+    const spotlightCard = document.getElementById('spotlightCard');
+    const spotlightImg = document.getElementById('spotlightImg');
+    const spotlightName = document.getElementById('spotlightName');
+    const spotlightMessage = document.getElementById('spotlightMessage');
+    const spotlightTime = document.getElementById('spotlightTime');
+    const emptyStateCard = document.getElementById('emptyStateCard');
+    const recentGrid = document.getElementById('recentGrid');
+    const photoCountBadge = document.getElementById('photoCountBadge');
+    const qrCodeImg = document.getElementById('qrCodeImg');
+    const cameraUrlDisplay = document.getElementById('cameraUrlDisplay');
+    const socketBadge = document.getElementById('socketBadge');
+    const socketDot = document.getElementById('socketDot');
+    const socketText = document.getElementById('socketText');
+    const liveClock = document.getElementById('liveClock');
+    const newPhotoBanner = document.getElementById('newPhotoBanner');
+    const btnFullscreen = document.getElementById('btnFullscreen');
+    const btnAudioToggle = document.getElementById('btnAudioToggle');
+    const iconAudioOn = document.getElementById('iconAudioOn');
+    const iconAudioOff = document.getElementById('iconAudioOff');
+
+    // 1. Live Clock
+    function updateLiveClock() {
+      const now = new Date();
+      liveClock.textContent = now.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit'
+      });
+    }
+    setInterval(updateLiveClock, 1000);
+    updateLiveClock();
+
+    // 2. Setup QR Code (Offline-first with LAN IP auto-detection)
+    async function setupQRCode() {
+      let targetUrl = window.location.origin + '/camera.html';
+      
+      try {
+        const res = await fetch('/api/server-info');
+        if (res.ok) {
+          const info = await res.json();
+          // If viewing on localhost on the laptop, use the actual LAN IP for guests scanning with phones
+          if (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1') {
+            if (info.cameraUrl) {
+              targetUrl = info.cameraUrl;
+            }
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch /api/server-info, falling back to window.location:', err);
+      }
+
+      cameraUrlDisplay.textContent = targetUrl;
+      // Local offline server endpoint with automatic fallback to qrserver.com
+      qrCodeImg.src = `/api/qr?url=${encodeURIComponent(targetUrl)}`;
+      qrCodeImg.onerror = () => {
+        qrCodeImg.src = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(targetUrl)}`;
+      };
+    }
+    setupQRCode();
+
+    // 3. Audio Chime (Web Audio API Synthesizer)
+    function initAudioContext() {
+      if (!audioContext) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+          audioContext = new AudioCtx();
+        }
+      }
+      if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume();
+      }
+      audioUnlocked = true;
+      iconAudioOn.classList.remove('hidden');
+      iconAudioOff.classList.add('hidden');
+    }
+
+    function playChime() {
+      if (!audioUnlocked || !audioContext) return;
+      try {
+        const notes = [523.25, 659.25, 783.99, 1046.50]; // C5, E5, G5, C6 (Pleasant celebratory chord)
+        notes.forEach((freq, idx) => {
+          const osc = audioContext.createOscillator();
+          const gain = audioContext.createGain();
+
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(freq, audioContext.currentTime + (idx * 0.12));
+
+          gain.gain.setValueAtTime(0, audioContext.currentTime + (idx * 0.12));
+          gain.gain.linearRampToValueAtTime(0.18, audioContext.currentTime + (idx * 0.12) + 0.04);
+          gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + (idx * 0.12) + 1.2);
+
+          osc.connect(gain);
+          gain.connect(audioContext.destination);
+
+          osc.start(audioContext.currentTime + (idx * 0.12));
+          osc.stop(audioContext.currentTime + (idx * 0.12) + 1.2);
+        });
+      } catch (e) {
+        console.warn('Audio chime error:', e);
+      }
+    }
+
+    btnAudioToggle.addEventListener('click', () => {
+      initAudioContext();
+    });
+    // Auto-unlock audio on any page interaction
+    window.addEventListener('click', () => {
+      if (!audioUnlocked) initAudioContext();
+    }, { once: true });
+
+    // 4. Fullscreen Mode
+    btnFullscreen.addEventListener('click', () => {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => console.log(err));
+      } else {
+        document.exitFullscreen().catch(err => console.log(err));
+      }
+    });
+
+    // 5. Display Photo in Spotlight
+    function displayPhoto(photo, animate = true) {
+      if (!photo) {
+        spotlightCard.classList.add('hidden');
+        emptyStateCard.classList.remove('hidden');
+        return;
+      }
+
+      spotlightCard.classList.remove('hidden');
+      emptyStateCard.classList.add('hidden');
+
+      if (animate) {
+        spotlightImg.style.opacity = '0';
+        setTimeout(() => {
+          updateSpotlightContent(photo);
+          spotlightImg.style.opacity = '1';
+        }, 300);
+      } else {
+        updateSpotlightContent(photo);
+      }
+    }
+
+    function updateSpotlightContent(photo) {
+      spotlightImg.src = photo.image_url;
+      spotlightName.textContent = photo.guest_name || 'Tamu Undangan';
+      spotlightMessage.textContent = photo.message || 'Selamat berbahagia!';
+
+      let timeStr = photo.created_at;
+      try {
+        const d = new Date(photo.created_at);
+        if (!isNaN(d.getTime())) {
+          timeStr = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+        }
+      } catch (e) {}
+      spotlightTime.textContent = timeStr;
+    }
+
+    // 6. Update Recent Grid (Last 6 photos)
+    function updateRecentGrid() {
+      photoCountBadge.textContent = `${photos.length} Foto`;
+      recentGrid.innerHTML = '';
+
+      const recentItems = photos.slice(0, 6);
+      recentItems.forEach((p, idx) => {
+        const item = document.createElement('div');
+        item.className = 'aspect-[3/4] rounded-lg overflow-hidden border border-slate-700 bg-slate-800 cursor-pointer hover:border-amber-400 hover:scale-105 transition shadow';
+        item.innerHTML = `<img src="${p.image_url}" alt="${p.guest_name}" class="w-full h-full object-cover" />`;
+        item.addEventListener('click', () => {
+          currentIndex = idx;
+          displayPhoto(p);
+          pauseAndResumeSlideshow(8000);
+        });
+        recentGrid.appendChild(item);
+      });
+    }
+
+    // 7. Slideshow Controller
+    function startSlideshow() {
+      clearInterval(slideshowTimer);
+      slideshowTimer = setInterval(() => {
+        if (isInterrupted || photos.length <= 1) return;
+        currentIndex = (currentIndex + 1) % photos.length;
+        displayPhoto(photos[currentIndex]);
+      }, 5000);
+    }
+
+    function pauseAndResumeSlideshow(pauseMs = 10000) {
+      isInterrupted = true;
+      clearInterval(slideshowTimer);
+      setTimeout(() => {
+        isInterrupted = false;
+        startSlideshow();
+      }, pauseMs);
+    }
+
+    // 8. Fetch Initial Photos
+    async function fetchInitialPhotos() {
+      try {
+        const res = await fetch('/api/photos');
+        if (res.ok) {
+          photos = await res.json();
+          if (photos.length > 0) {
+            currentIndex = 0;
+            displayPhoto(photos[0], false);
+            updateRecentGrid();
+            startSlideshow();
+          } else {
+            displayPhoto(null);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch initial photos:', err);
+      }
+    }
+
+    // 9. Socket.io Realtime Listener
+    const socket = io();
+
+    socket.on('connect', () => {
+      socketDot.className = 'w-2 h-2 rounded-full bg-emerald-400';
+      socketText.textContent = 'Live Terhubung';
+      socketBadge.className = 'flex items-center gap-2 px-3 py-1 rounded-full bg-emerald-950/80 border border-emerald-600/40 text-xs text-emerald-300';
+    });
+
+    socket.on('disconnect', () => {
+      socketDot.className = 'w-2 h-2 rounded-full bg-rose-500 animate-pulse';
+      socketText.textContent = 'Terputus';
+      socketBadge.className = 'flex items-center gap-2 px-3 py-1 rounded-full bg-rose-950/80 border border-rose-600/40 text-xs text-rose-300';
+    });
+
+    socket.on('new_photo', (newPhoto) => {
+      console.log('New photo received via socket:', newPhoto);
+
+      // Play sound effect
+      playChime();
+
+      // Show Banner
+      newPhotoBanner.classList.remove('hidden');
+      newPhotoBanner.classList.add('banner-animated');
+      setTimeout(() => {
+        newPhotoBanner.classList.remove('banner-animated');
+        newPhotoBanner.classList.add('hidden');
+      }, 6000);
+
+      // Prepend photo to list
+      photos.unshift(newPhoto);
+      currentIndex = 0;
+
+      // Update UI & Spotlight immediately
+      displayPhoto(newPhoto);
+      updateRecentGrid();
+
+      // Pause regular slideshow for 10 seconds before resuming rotation
+      pauseAndResumeSlideshow(10000);
+    });
+
+    socket.on('photo_deleted', ({ id }) => {
+      photos = photos.filter(p => p.id !== id);
+      updateRecentGrid();
+      if (photos.length > 0) {
+        currentIndex = 0;
+        displayPhoto(photos[0]);
+      } else {
+        displayPhoto(null);
+      }
+    });
+
+    // Initialize
+    fetchInitialPhotos();
+  </script>
+</body>
+</html>
+

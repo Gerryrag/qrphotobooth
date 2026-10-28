@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# SQLite Database file
+database.db
+
+# User uploaded photos (keep folder)
+public/uploads/*.jpg
+public/uploads/*.png
+!public/uploads/.gitkeep
+
+# Custom frames folder
+!public/frames/.gitkeep
+
+# SSL Keys
+key.pem
+cert.pem
+
+# Logs & Environment
+*.log
+.env
+.DS_Store
+tunnel_url.txt
