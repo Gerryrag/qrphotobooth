@@ -1,58 +1,79 @@
 /**
- * GOOGLE APPS SCRIPT - AUTO UPLOAD FOTO KE GOOGLE DRIVE
+ * GOOGLE APPS SCRIPT - AUTO UPLOAD & DATABASE DI GOOGLE DRIVE (VERCEL READY)
  * 
- * PANDUAN CEPAT (2 MENIT):
- * 1. Buka Google Drive (https://drive.google.com).
- * 2. Buat folder baru (misal: "Foto Wedding Romeo & Juliet").
- * 3. Buka folder tersebut, lalu salin "Folder ID" dari bilah URL browser Anda:
- *    Contoh URL: https://drive.google.com/drive/folders/1a2b3c4d5e6f7g8h9i...
- *    Folder ID adalah: 1a2b3c4d5e6f7g8h9i...
- * 4. Buka https://script.google.com -> Klik "New Project".
- * 5. Hapus semua kode bawaan, lalu paste SELURUH kode di bawah ini.
- * 6. Ganti 'MASUKKAN_FOLDER_ID_ANDA_DI_SINI' dengan Folder ID Anda.
- * 7. Klik "Deploy" (di kanan atas) -> "New deployment".
- * 8. Pilih type: "Web app".
- * 9. Seting:
- *    - Execute as: "Me (email Anda)"
- *    - Who has access: "Anyone" (PENTING: pilih Anyone agar tamu bisa kirim foto).
- * 10. Klik "Deploy" -> Izinkan akses (Authorize Access) -> Salin "Web app URL".
- * 11. Masukkan URL tersebut ke file `.env` di proyek Anda:
- *     GOOGLE_DRIVE_WEBHOOK_URL="https://script.google.com/macros/s/.../exec"
+ * Script ini berfungsi ganda:
+ * 1. Menyimpan file foto tamu ke folder Google Drive Anda.
+ * 2. Menyimpan daftar ucapan & data tamu ke file "photos.json" di dalam folder tersebut,
+ *    sehingga aplikasi di Vercel tidak butuh database terpisah (100% Gratis & Awet).
+ * 
+ * CARA UPDATE DI SCRIPT.GOOGLE.COM:
+ * 1. Buka project Anda di https://script.google.com
+ * 2. Ganti seluruh kodenya dengan kode di bawah ini.
+ * 3. Pastikan FOLDER_ID sudah terisi ID folder Anda (tanpa '?usp=...').
+ * 4. Klik icon Save (disket).
+ * 5. Klik "Deploy" -> "Manage deployments" -> Klik icon Pensil (Edit)
+ *    -> Version: pilih "New version" -> Klik "Deploy".
  */
 
+// GANTI DENGAN ID FOLDER GOOGLE DRIVE ANDA
+var FOLDER_ID = "1jMuRoj5BAoWbhggEZCbIgMDJI5Ysqv4T";
+
+// POST: Upload Foto Baru & Catat Ucapan Tamu
 function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
-    
-    // GANTI DENGAN ID FOLDER GOOGLE DRIVE ANDA (tanpa ?usp=drive_link)
-    var rawFolderId = "MASUKKAN_FOLDER_ID_ANDA_DI_SINI";
-    var FOLDER_ID = rawFolderId.split('?')[0].split('#')[0].trim();
-    if (FOLDER_ID.indexOf('/folders/') !== -1) {
-      FOLDER_ID = FOLDER_ID.split('/folders/')[1].split('/')[0];
-    }
-    var folder = DriveApp.getFolderById(FOLDER_ID);
+    var cleanFolderId = FOLDER_ID.split('?')[0].split('#')[0].trim();
+    var folder = DriveApp.getFolderById(cleanFolderId);
 
-    // Ambil string base64 dan bersihkan prefix
+    // 1. Simpan Foto JPG
     var base64Data = data.image_base64.replace(/^data:image\/\w+;base64,/, "");
     var decoded = Utilities.base64Decode(base64Data);
     var filename = data.filename || ("wedding_" + new Date().getTime() + ".jpg");
 
-    // Buat file di Google Drive
     var blob = Utilities.newBlob(decoded, "image/jpeg", filename);
     var file = folder.createFile(blob);
-
-    // Set permission agar foto bisa tampil langsung di galeri web
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
 
-    // URL langsung untuk menampilkan gambar
     var fileId = file.getId();
     var imageUrl = "https://lh3.googleusercontent.com/d/" + fileId;
+
+    // 2. Simpan Catatan Ucapan Tamu ke photos.json di Folder Drive
+    var photoEntry = {
+      id: new Date().getTime(),
+      guest_name: data.guest_name ? String(data.guest_name).trim() : "Tamu Undangan",
+      message: data.message ? String(data.message).trim() : "",
+      image_url: imageUrl,
+      created_at: new Date().toISOString()
+    };
+
+    var files = folder.getFilesByName("photos.json");
+    var photoList = [];
+    var jsonFile;
+
+    if (files.hasNext()) {
+      jsonFile = files.next();
+      try {
+        photoList = JSON.parse(jsonFile.getBlob().getDataAsString());
+      } catch (parseErr) {
+        photoList = [];
+      }
+    }
+
+    photoList.unshift(photoEntry);
+    if (photoList.length > 100) photoList = photoList.slice(0, 100);
+
+    if (jsonFile) {
+      jsonFile.setContent(JSON.stringify(photoList));
+    } else {
+      var newJsonFile = folder.createFile("photos.json", JSON.stringify(photoList), "application/json");
+      newJsonFile.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    }
 
     return ContentService.createTextOutput(JSON.stringify({
       success: true,
       fileId: fileId,
       imageUrl: imageUrl,
-      viewUrl: file.getUrl()
+      data: photoEntry
     })).setMimeType(ContentService.MimeType.JSON);
 
   } catch (err) {
@@ -63,3 +84,20 @@ function doPost(e) {
   }
 }
 
+// GET: Ambil Daftar Seluruh Foto Tamu dari photos.json
+function doGet(e) {
+  try {
+    var cleanFolderId = FOLDER_ID.split('?')[0].split('#')[0].trim();
+    var folder = DriveApp.getFolderById(cleanFolderId);
+    var files = folder.getFilesByName("photos.json");
+
+    if (files.hasNext()) {
+      var content = files.next().getBlob().getDataAsString();
+      return ContentService.createTextOutput(content)
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+    return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
+  } catch (err) {
+    return ContentService.createTextOutput("[]").setMimeType(ContentService.MimeType.JSON);
+  }
+}

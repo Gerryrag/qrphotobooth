@@ -53,34 +53,28 @@ app.use(express.json({ limit: '15mb' }));
 app.use(express.urlencoded({ extended: true, limit: '15mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
-// SQLite Database Setup
-const dbPath = path.join(__dirname, 'database.db');
-const db = new sqlite3.Database(dbPath, (err) => {
-  if (err) {
-    console.error('Failed to connect to SQLite database:', err.message);
-  } else {
-    console.log('Connected to SQLite database at database.db');
-  }
-});
-
-// Initialize database schema
-db.serialize(() => {
-  db.run(`
-    CREATE TABLE IF NOT EXISTS photos (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      guest_name TEXT NOT NULL,
-      message TEXT NOT NULL,
-      image_url TEXT NOT NULL,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  `, (err) => {
+// SQLite Database Setup (With fallback for Vercel Serverless)
+let db = null;
+try {
+  const dbPath = process.env.VERCEL ? '/tmp/database.db' : path.join(__dirname, 'database.db');
+  db = new sqlite3.Database(dbPath, (err) => {
     if (err) {
-      console.error('Error creating photos table:', err.message);
+      console.warn('SQLite notice:', err.message);
     } else {
-      console.log('Photos table verified/initialized.');
+      db.run(`
+        CREATE TABLE IF NOT EXISTS photos (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          guest_name TEXT NOT NULL,
+          message TEXT NOT NULL,
+          image_url TEXT NOT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `);
     }
   });
-});
+} catch (dbErr) {
+  console.warn('SQLite database skipped on serverless:', dbErr.message);
+}
 
 // Helper to get public tunnel URL if active
 function getPublicUrl() {
@@ -168,20 +162,38 @@ app.get('/api/qr', async (req, res) => {
   }
 });
 
-// GET /api/photos: Get latest 50 photos
-app.get('/api/photos', (req, res) => {
-  const query = 'SELECT * FROM photos ORDER BY id DESC LIMIT 50';
-  db.all(query, [], (err, rows) => {
-    if (err) {
-      console.error('Error fetching photos:', err.message);
-      return res.status(500).json({ error: 'Failed to retrieve photos' });
+// GET /api/photos: Get latest 50 photos (from Google Drive webhook or local SQLite)
+app.get('/api/photos', async (req, res) => {
+  const gdriveWebhook = process.env.GOOGLE_DRIVE_WEBHOOK_URL;
+  if (gdriveWebhook) {
+    try {
+      const gRes = await fetch(gdriveWebhook);
+      if (gRes.ok) {
+        const drivePhotos = await gRes.json();
+        if (Array.isArray(drivePhotos) && drivePhotos.length > 0) {
+          return res.json(drivePhotos);
+        }
+      }
+    } catch (err) {
+      console.warn('Google Drive fetch notice:', err.message);
     }
-    res.json(rows);
-  });
+  }
+
+  if (db) {
+    const query = 'SELECT * FROM photos ORDER BY id DESC LIMIT 50';
+    db.all(query, [], (err, rows) => {
+      if (err) {
+        return res.json([]);
+      }
+      res.json(rows || []);
+    });
+  } else {
+    res.json([]);
+  }
 });
 
 // Helper to save photo (Google Drive if configured, otherwise local uploads folder)
-async function savePhotoFile(filename, buffer, image_base64) {
+async function savePhotoFile(filename, buffer, image_base64, guest_name, message) {
   const gdriveWebhook = process.env.GOOGLE_DRIVE_WEBHOOK_URL;
   
   if (gdriveWebhook) {
@@ -192,14 +204,19 @@ async function savePhotoFile(filename, buffer, image_base64) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           filename,
-          image_base64
+          image_base64,
+          guest_name,
+          message
         })
       });
 
       const resJson = await response.json();
       if (resJson && resJson.success && resJson.imageUrl) {
         console.log(`[Google Drive] Sukses! File tersimpan di Google Drive: ${resJson.imageUrl}`);
-        return resJson.imageUrl;
+        return {
+          imageUrl: resJson.imageUrl,
+          data: resJson.data
+        };
       }
       console.warn('[Google Drive] Webhook tidak mengembalikan imageUrl, menggunakan penyimpanan lokal:', resJson);
     } catch (gdriveErr) {
@@ -209,8 +226,14 @@ async function savePhotoFile(filename, buffer, image_base64) {
 
   // Local filesystem fallback
   const filePath = path.join(uploadsDir, filename);
-  await fs.promises.writeFile(filePath, buffer);
-  return `/uploads/${filename}`;
+  try {
+    await fs.promises.writeFile(filePath, buffer);
+  } catch (fsErr) {
+    console.warn('Local file write skipped (serverless):', fsErr.message);
+  }
+  return {
+    imageUrl: `/uploads/${filename}`
+  };
 }
 
 // POST /api/upload: Upload photo with message and guest name
@@ -236,39 +259,34 @@ app.post('/api/upload', async (req, res) => {
     const filename = `photo_${Date.now()}_${Math.random().toString(36).substring(2, 7)}.jpg`;
 
     // Save photo to Google Drive or Local Disk
-    const imageUrl = await savePhotoFile(filename, buffer, image_base64);
+    const uploadResult = await savePhotoFile(filename, buffer, image_base64, guest_name.trim(), message.trim());
+    const imageUrl = uploadResult.imageUrl;
 
-    const insertQuery = `
-      INSERT INTO photos (guest_name, message, image_url, created_at)
-      VALUES (?, ?, ?, datetime('now', 'localtime'))
-    `;
+    const fallbackData = uploadResult.data || {
+      id: Date.now(),
+      guest_name: guest_name.trim(),
+      message: message.trim(),
+      image_url: imageUrl,
+      created_at: new Date().toISOString()
+    };
 
-    db.run(insertQuery, [guest_name.trim(), message.trim(), imageUrl], function (dbErr) {
-      if (dbErr) {
-        console.error('Failed to insert photo record into DB:', dbErr.message);
-        return res.status(500).json({ error: 'Failed to record photo in database' });
-      }
+    if (db) {
+      const insertQuery = `
+        INSERT INTO photos (guest_name, message, image_url, created_at)
+        VALUES (?, ?, ?, datetime('now', 'localtime'))
+      `;
 
-      const newId = this.lastID;
-      db.get('SELECT * FROM photos WHERE id = ?', [newId], (selectErr, row) => {
-        if (selectErr || !row) {
-          console.error('Failed to query inserted row:', selectErr);
-          const fallbackData = {
-            id: newId,
-            guest_name: guest_name.trim(),
-            message: message.trim(),
-            image_url: imageUrl,
-            created_at: new Date().toISOString()
-          };
-          io.emit('new_photo', fallbackData);
-          return res.json({ success: true, data: fallbackData });
+      db.run(insertQuery, [guest_name.trim(), message.trim(), imageUrl], function (dbErr) {
+        if (!dbErr && this.lastID) {
+          fallbackData.id = this.lastID;
         }
-
-        // Broadcast immediately to all connected clients
-        io.emit('new_photo', row);
-        return res.json({ success: true, data: row });
+        io.emit('new_photo', fallbackData);
+        return res.json({ success: true, data: fallbackData });
       });
-    });
+    } else {
+      io.emit('new_photo', fallbackData);
+      return res.json({ success: true, data: fallbackData });
+    }
   } catch (err) {
     console.error('Unexpected error in /api/upload:', err);
     return res.status(500).json({ error: 'Internal server error' });
@@ -314,24 +332,28 @@ io.on('connection', (socket) => {
   });
 });
 
-// Start Server
-server.listen(PORT, HOST, () => {
-  const localIPs = getLocalNetworkAddresses();
-  const lanIp = localIPs.find(ip => ip.startsWith('192.168.') || ip.startsWith('10.')) || localIPs[0] || 'localhost';
+// Start Server (Only if not running on Vercel Serverless)
+if (!process.env.VERCEL) {
+  server.listen(PORT, HOST, () => {
+    const localIPs = getLocalNetworkAddresses();
+    const lanIp = localIPs.find(ip => ip.startsWith('192.168.') || ip.startsWith('10.')) || localIPs[0] || 'localhost';
 
-  console.log('==================================================');
-  console.log(`  QR Live Photobooth & Wedding Gallery Server`);
-  console.log('==================================================');
-  console.log(`  Projector Display: http://localhost:${PORT}/live.html`);
-  console.log(`  Guest Camera (HTTP):  http://${lanIp}:${PORT}/camera.html`);
-
-  if (httpsServer) {
-    httpsServer.listen(HTTPS_PORT, HOST, () => {
-      console.log(`  Guest Camera (HTTPS): https://${lanIp}:${HTTPS_PORT}/camera.html  (RECOMMENDED FOR MOBILE BROWSER CAMERA)`);
-      console.log('==================================================');
-    });
-  } else {
     console.log('==================================================');
-  }
-});
+    console.log(`  QR Live Photobooth & Wedding Gallery Server`);
+    console.log('==================================================');
+    console.log(`  Projector Display: http://localhost:${PORT}/live.html`);
+    console.log(`  Guest Camera (HTTP):  http://${lanIp}:${PORT}/camera.html`);
+
+    if (httpsServer) {
+      httpsServer.listen(HTTPS_PORT, HOST, () => {
+        console.log(`  Guest Camera (HTTPS): https://${lanIp}:${HTTPS_PORT}/camera.html  (RECOMMENDED FOR MOBILE BROWSER CAMERA)`);
+        console.log('==================================================');
+      });
+    } else {
+      console.log('==================================================');
+    }
+  });
+}
+
+module.exports = app;
 
