@@ -24,8 +24,12 @@ function doPost(e) {
   try {
     var data = JSON.parse(e.postData.contents);
     
-    // GANTI DENGAN ID FOLDER GOOGLE DRIVE ANDA
-    var FOLDER_ID = "MASUKKAN_FOLDER_ID_ANDA_DI_SINI";
+    // GANTI DENGAN ID FOLDER GOOGLE DRIVE ANDA (tanpa ?usp=drive_link)
+    var rawFolderId = "MASUKKAN_FOLDER_ID_ANDA_DI_SINI";
+    var FOLDER_ID = rawFolderId.split('?')[0].split('#')[0].trim();
+    if (FOLDER_ID.indexOf('/folders/') !== -1) {
+      FOLDER_ID = FOLDER_ID.split('/folders/')[1].split('/')[0];
+    }
     var folder = DriveApp.getFolderById(FOLDER_ID);
 
     // Ambil string base64 dan bersihkan prefix
@@ -58,3 +62,4 @@ function doPost(e) {
     })).setMimeType(ContentService.MimeType.JSON);
   }
 }
+
