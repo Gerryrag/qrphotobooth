@@ -67,6 +67,9 @@
 </head>
 <body class="min-h-screen text-neutral-100 flex justify-center selection:bg-amber-500 selection:text-black">
 
+  <!-- Fullscreen Optical Flash Screen (Blinding White Flash for All Cameras) -->
+  <div id="fullScreenFlash" class="fixed inset-0 bg-white pointer-events-none opacity-0 z-[9999] transition-opacity duration-150"></div>
+
   <!-- ======================================================== -->
   <!-- 1. MAIN FEED SCREEN (Once.film Inspired Home View)       -->
   <!-- ======================================================== -->
@@ -251,11 +254,30 @@
 
         </div>
 
+        <!-- FILM ROLL SELECTOR (35mm Analog Filters: Kodak, Fuji, Portra, B&W, Huji) -->
+        <div class="relative z-10 pt-2.5 pb-1 flex items-center justify-between gap-1 overflow-x-auto no-scrollbar">
+          <button type="button" data-film="kodak" class="film-tab active flex-1 py-1 px-1.5 rounded-lg text-[9px] font-mono font-bold transition flex items-center justify-center gap-1 bg-amber-400 text-neutral-950 shadow">
+            <span>🟡 KODAK</span>
+          </button>
+          <button type="button" data-film="fuji" class="film-tab flex-1 py-1 px-1.5 rounded-lg text-[9px] font-mono font-bold transition flex items-center justify-center gap-1 bg-neutral-900 border border-neutral-700 text-neutral-300">
+            <span>🟢 FUJI</span>
+          </button>
+          <button type="button" data-film="portra" class="film-tab flex-1 py-1 px-1.5 rounded-lg text-[9px] font-mono font-bold transition flex items-center justify-center gap-1 bg-neutral-900 border border-neutral-700 text-neutral-300">
+            <span>🌸 PORTRA</span>
+          </button>
+          <button type="button" data-film="mono" class="film-tab flex-1 py-1 px-1.5 rounded-lg text-[9px] font-mono font-bold transition flex items-center justify-center gap-1 bg-neutral-900 border border-neutral-700 text-neutral-300">
+            <span>⚪ B&W</span>
+          </button>
+          <button type="button" data-film="huji" class="film-tab flex-1 py-1 px-1.5 rounded-lg text-[9px] font-mono font-bold transition flex items-center justify-center gap-1 bg-neutral-900 border border-neutral-700 text-neutral-300">
+            <span>🔴 HUJI</span>
+          </button>
+        </div>
+
         <!-- CENTER: VIEWFINDER (Live Video with Reticle & Date Stamp) -->
-        <div class="relative z-10 my-3.5 mx-auto w-full max-w-[310px] aspect-[3/4] rounded-2xl overflow-hidden bg-black border-4 border-neutral-900 shadow-2xl shadow-black flex items-center justify-center">
+        <div class="relative z-10 my-2 mx-auto w-full max-w-[310px] aspect-[3/4] rounded-2xl overflow-hidden bg-black border-4 border-neutral-900 shadow-2xl shadow-black flex items-center justify-center">
           
           <!-- Live Video Stream -->
-          <video id="videoElement" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover mirror"></video>
+          <video id="videoElement" autoplay playsinline muted class="absolute inset-0 w-full h-full object-cover mirror transition-all duration-300"></video>
 
           <!-- Viewfinder Vignette Overlay -->
           <div class="absolute inset-0 pointer-events-none z-10 bg-gradient-to-t from-black/50 via-transparent to-black/30"></div>
@@ -272,8 +294,8 @@
           <div class="absolute inset-0 pointer-events-none z-20 flex flex-col justify-between p-3.5">
             <!-- Top Viewfinder Header -->
             <div class="flex justify-between items-center text-[10px] font-mono text-white/70">
-              <span class="tracking-widest">3:4 FRAME</span>
-              <span class="tracking-widest">ISO 400</span>
+              <span id="viewfinderFilmBadge" class="tracking-widest text-amber-300 font-bold">KODAK GOLD</span>
+              <span id="viewfinderIsoBadge" class="tracking-widest">ISO 400</span>
             </div>
 
             <!-- Center Reticle Focus Bracket -->
@@ -502,6 +524,40 @@
     let capturedDataUrl = null;
     let isFlashEnabled = true;
     let remainingFilmCount = 24;
+    let currentFilm = 'kodak'; // 'kodak', 'fuji', 'portra', 'mono', 'huji'
+
+    const filmPresets = {
+      kodak: {
+        name: 'KODAK GOLD',
+        iso: 'ISO 400',
+        cssFilter: 'sepia(0.18) contrast(1.12) brightness(1.04) saturate(1.2)',
+        brandText: 'KODAK GOLD 400 • ROMEO & JULIET'
+      },
+      fuji: {
+        name: 'FUJI SUPERIA',
+        iso: 'ISO 800',
+        cssFilter: 'hue-rotate(-12deg) contrast(1.18) brightness(1.02) saturate(1.15)',
+        brandText: 'FUJIFILM SUPERIA 800 • ROMEO & JULIET'
+      },
+      portra: {
+        name: 'PORTRA 160',
+        iso: 'ISO 160',
+        cssFilter: 'sepia(0.08) contrast(0.98) brightness(1.08) saturate(0.92)',
+        brandText: 'KODAK PORTRA 160 • ROMEO & JULIET'
+      },
+      mono: {
+        name: 'ILFORD B&W',
+        iso: 'ISO 400',
+        cssFilter: 'grayscale(1) contrast(1.3) brightness(1.06)',
+        brandText: 'ILFORD HP5 PLUS B&W • ROMEO & JULIET'
+      },
+      huji: {
+        name: 'HUJI 1998',
+        iso: 'ISO 400',
+        cssFilter: 'contrast(1.22) brightness(1.06) saturate(1.35)',
+        brandText: 'DISPO HUJI 1998 • ROMEO & JULIET'
+      }
+    };
 
     // Elements
     const feedScreen = document.getElementById('feedScreen');
@@ -525,6 +581,10 @@
     const btnOpenGalleryPicker = document.getElementById('btnOpenGalleryPicker');
     const btnTriggerUpload = document.getElementById('btnTriggerUpload');
     const fileInput = document.getElementById('fileInput');
+    const filmTabs = document.querySelectorAll('.film-tab');
+    const viewfinderFilmBadge = document.getElementById('viewfinderFilmBadge');
+    const viewfinderIsoBadge = document.getElementById('viewfinderIsoBadge');
+    const fullScreenFlash = document.getElementById('fullScreenFlash');
 
     const video = document.getElementById('videoElement');
     const flashOverlay = document.getElementById('flashOverlay');
@@ -671,6 +731,49 @@
       } catch (e) {}
     }
 
+    // 4. Flash Capacitor Discharge Sound (PZZZT-POP)
+    function playFlashDischargeSound() {
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(800, now);
+        osc.frequency.exponentialRampToValueAtTime(50, now + 0.15);
+
+        gain.gain.setValueAtTime(0.4, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.15);
+      } catch (e) {}
+    }
+
+    // 5. Film Switch Click Sound
+    function playSwitchSound() {
+      try {
+        const ctx = getAudioContext();
+        if (!ctx) return;
+        const now = ctx.currentTime;
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(600, now);
+        osc.frequency.exponentialRampToValueAtTime(120, now + 0.04);
+        gain.gain.setValueAtTime(0.3, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.04);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.04);
+      } catch (e) {}
+    }
+
     // Flash Toggle
     btnToggleFlash.addEventListener('click', () => {
       isFlashEnabled = !isFlashEnabled;
@@ -685,6 +788,57 @@
         flashStatusText.className = 'text-[11px] font-mono font-bold text-neutral-400';
       }
     });
+
+    // Hardware Torch Trigger (If device back camera supports it)
+    async function triggerHardwareFlash() {
+      try {
+        if (!currentStream) return;
+        const track = currentStream.getVideoTracks()[0];
+        if (track && track.getCapabilities) {
+          const caps = track.getCapabilities();
+          if (caps && caps.torch) {
+            await track.applyConstraints({ advanced: [{ torch: true }] });
+            setTimeout(async () => {
+              try { await track.applyConstraints({ advanced: [{ torch: false }] }); } catch (e) {}
+            }, 300);
+          }
+        }
+      } catch (e) {
+        console.warn('Hardware torch error:', e);
+      }
+    }
+
+    // Film Roll Preset Switcher
+    filmTabs.forEach(tab => {
+      tab.addEventListener('click', () => {
+        const selected = tab.dataset.film;
+        if (!filmPresets[selected]) return;
+
+        playSwitchSound();
+        currentFilm = selected;
+
+        // Update Tab Buttons UI
+        filmTabs.forEach(t => {
+          t.className = 'film-tab flex-1 py-1 px-1.5 rounded-lg text-[9px] font-mono font-bold transition flex items-center justify-center gap-1 bg-neutral-900 border border-neutral-700 text-neutral-300';
+        });
+        tab.className = 'film-tab active flex-1 py-1 px-1.5 rounded-lg text-[9px] font-mono font-bold transition flex items-center justify-center gap-1 bg-amber-400 text-neutral-950 shadow';
+
+        // Update Viewfinder Badges
+        const preset = filmPresets[selected];
+        viewfinderFilmBadge.textContent = preset.name;
+        viewfinderIsoBadge.textContent = preset.iso;
+
+        // Apply Live Filter Preview to Video Viewfinder
+        video.style.filter = preset.cssFilter;
+      });
+    });
+
+    // Apply default film filter to live video on start
+    function applyCurrentFilmFilter() {
+      if (filmPresets[currentFilm]) {
+        video.style.filter = filmPresets[currentFilm].cssFilter;
+      }
+    }
 
     // Mechanical Winder Click
     btnWindFilm.addEventListener('click', () => {
@@ -786,6 +940,7 @@
       document.body.style.overflow = 'hidden';
       resetShootingView();
       startCamera();
+      applyCurrentFilmFilter();
       if (isFlashEnabled) playFlashChargeSound();
     }
 
@@ -924,11 +1079,21 @@
     });
 
     function executeShutterCapture() {
-      // Audio Shutter
+      // 1. Audio Shutter Snap
       playShutterSound();
 
-      // Optical Flash Effect
+      // 2. Optical Fullscreen Flash & Hardware Torch
       if (isFlashEnabled) {
+        playFlashDischargeSound();
+        triggerHardwareFlash();
+
+        if (fullScreenFlash) {
+          fullScreenFlash.style.opacity = '1';
+          setTimeout(() => {
+            fullScreenFlash.style.opacity = '0';
+          }, 240);
+        }
+
         flashOverlay.classList.remove('opacity-0');
         flashOverlay.classList.add('shutter-flash');
         setTimeout(() => {
@@ -945,7 +1110,7 @@
       processAnalogFilmFrame(video, currentFacingMode === 'user');
     }
 
-    // 35mm Analog Film Grain & Retro Date Stamp Renderer
+    // 35mm Analog Film Processing with Filters & Direct-Flash Shader
     function processAnalogFilmFrame(sourceMedia, mirror) {
       const targetW = 720;
       const targetH = 960;
@@ -972,6 +1137,7 @@
         cropY = (srcH - renderH) / 2;
       }
 
+      // Draw source image with optional mirror
       ctx.save();
       if (mirror) {
         ctx.translate(targetW, 0);
@@ -980,35 +1146,88 @@
       ctx.drawImage(sourceMedia, cropX, cropY, renderW, renderH, 0, 0, targetW, targetH);
       ctx.restore();
 
-      // 1. Color Grading: Warm Vintage Film Tone (Kodak Portra warm feel)
+      // 1. DIRECT FLASH SIMULATION (When Flash is ON)
+      if (isFlashEnabled) {
+        ctx.save();
+        // High-intensity central spotlight highlight
+        const flashSpot = ctx.createRadialGradient(targetW / 2, targetH * 0.42, 60, targetW / 2, targetH * 0.42, targetW * 0.85);
+        flashSpot.addColorStop(0, 'rgba(255, 255, 255, 0.28)');
+        flashSpot.addColorStop(0.45, 'rgba(255, 255, 255, 0.10)');
+        flashSpot.addColorStop(1, 'rgba(0, 0, 0, 0.32)'); // falloff shadow in background
+        ctx.fillStyle = flashSpot;
+        ctx.fillRect(0, 0, targetW, targetH);
+        ctx.restore();
+      }
+
+      // 2. FILM COLOR GRADING PRESETS
       ctx.save();
-      ctx.fillStyle = 'rgba(255, 235, 190, 0.08)'; // Warm golden wash
-      ctx.fillRect(0, 0, targetW, targetH);
+      if (currentFilm === 'kodak') {
+        // Kodak Gold 400: Warm golden sunshine tint, rich amber skin tone
+        ctx.fillStyle = 'rgba(255, 200, 100, 0.12)';
+        ctx.fillRect(0, 0, targetW, targetH);
+      } else if (currentFilm === 'fuji') {
+        // Fuji Superia 800: Emerald cyan tint in shadows, cool highlights
+        ctx.fillStyle = 'rgba(70, 220, 160, 0.09)';
+        ctx.fillRect(0, 0, targetW, targetH);
+      } else if (currentFilm === 'portra') {
+        // Portra 160: Soft dreamy peach pastels, flattering skin
+        ctx.fillStyle = 'rgba(255, 225, 215, 0.11)';
+        ctx.fillRect(0, 0, targetW, targetH);
+      } else if (currentFilm === 'huji') {
+        // Huji 1998: Warm saturation + Authentic Analog Light Leak
+        ctx.fillStyle = 'rgba(255, 140, 50, 0.08)';
+        ctx.fillRect(0, 0, targetW, targetH);
+
+        // Vertical Light Leak on edge
+        const leak = ctx.createLinearGradient(targetW * 0.68, 0, targetW, 0);
+        leak.addColorStop(0, 'rgba(255, 60, 0, 0)');
+        leak.addColorStop(0.4, 'rgba(255, 90, 0, 0.30)');
+        leak.addColorStop(0.85, 'rgba(255, 160, 20, 0.50)');
+        leak.addColorStop(1, 'rgba(255, 230, 100, 0.35)');
+        ctx.fillStyle = leak;
+        ctx.fillRect(0, 0, targetW, targetH);
+      }
       ctx.restore();
 
-      // 2. Film Grain Texture Shader
+      // 3. PIXEL SHADER: FILM GRAIN & B&W CONVERSION
       const imgData = ctx.getImageData(0, 0, targetW, targetH);
       const data = imgData.data;
-      const grainIntensity = 14;
+      const isMono = currentFilm === 'mono';
+      const grainIntensity = isMono ? 22 : (currentFilm === 'fuji' ? 18 : 14);
+
       for (let i = 0; i < data.length; i += 4) {
+        let r = data[i];
+        let g = data[i + 1];
+        let b = data[i + 2];
+
+        if (isMono) {
+          // Grayscale formula
+          const gray = 0.299 * r + 0.587 * g + 0.114 * b;
+          // High contrast S-curve
+          const contrast = (gray - 128) * 1.25 + 128;
+          r = g = b = Math.min(255, Math.max(0, contrast));
+        }
+
+        // Procedural film grain
         const noise = (Math.random() - 0.5) * grainIntensity;
-        data[i] = Math.min(255, Math.max(0, data[i] + noise));
-        data[i + 1] = Math.min(255, Math.max(0, data[i + 1] + noise));
-        data[i + 2] = Math.min(255, Math.max(0, data[i + 2] + noise));
+        data[i] = Math.min(255, Math.max(0, r + noise));
+        data[i + 1] = Math.min(255, Math.max(0, g + noise));
+        data[i + 2] = Math.min(255, Math.max(0, b + noise));
       }
       ctx.putImageData(imgData, 0, 0);
 
-      // 3. Vignette & Bottom Shadow
+      // 4. Subtle Vignette & Bottom Shadow
       ctx.save();
       const vignette = ctx.createLinearGradient(0, targetH * 0.7, 0, targetH);
       vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      vignette.addColorStop(1, 'rgba(0, 0, 0, 0.7)');
+      vignette.addColorStop(1, 'rgba(0, 0, 0, 0.75)');
       ctx.fillStyle = vignette;
       ctx.fillRect(0, targetH * 0.7, targetW, targetH * 0.3);
 
-      // 4. Wedding Branding (Minimalist film edge typography)
+      // 5. Dynamic Film Edge Branding
+      const preset = filmPresets[currentFilm] || filmPresets.kodak;
       ctx.fillStyle = '#ffffff';
-      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.85)';
       ctx.shadowBlur = 8;
       ctx.font = '500 24px "Newsreader", Georgia, serif';
       ctx.fillText('The Wedding of Romeo & Juliet', 36, targetH - 45);
@@ -1017,9 +1236,9 @@
       ctx.fillStyle = '#cbd5e1';
       ctx.font = '600 11px "Plus Jakarta Sans", sans-serif';
       ctx.letterSpacing = '3px';
-      ctx.fillText('DISPOSABLE 35mm • ROMEO & JULIET', 36, targetH - 24);
+      ctx.fillText(preset.brandText, 36, targetH - 24);
 
-      // 5. ICONIC RETRO ORANGE DIGITAL DATE STAMP ('26 10 28)
+      // 6. Iconic Glowing Orange Digital Date Stamp ('26 10 28)
       const dateString = getRetroDateStampString();
       ctx.save();
       ctx.font = 'bold 34px "Share Tech Mono", "VT323", monospace';
@@ -1036,6 +1255,16 @@
       capturedDataUrl = filmCanvas.toDataURL('image/jpeg', 0.75);
 
       // Display Developed Print in Step B
+      previewImage.src = capturedDataUrl;
+      cameraBodyWrapper.classList.add('hidden');
+      developedFormWrapper.classList.remove('hidden');
+      stopCamera();
+
+      // Play automatic film winder sound after shot
+      setTimeout(() => {
+        playWinderSound();
+      }, 400);
+    }
       previewImage.src = capturedDataUrl;
       cameraBodyWrapper.classList.add('hidden');
       developedFormWrapper.classList.remove('hidden');
