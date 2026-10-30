@@ -6,8 +6,8 @@
   <title>Romeo & Juliet's Disposable Wedding Camera</title>
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
-  <!-- Socket.io Client for real-time live photo feed updates -->
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- Socket.io Client from CDN (Clean, no 404 error on Vercel or local) -->
+  <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
   <!-- Google Fonts: Newsreader, Share Tech Mono (Retro Date Stamp), & Plus Jakarta Sans -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1356,14 +1356,25 @@
       alert('Tips: Klik pada foto di roll galeri untuk menyimpan foto ke HP Anda!');
     });
 
-    // Real-time socket broadcast
-    const socket = io();
-    socket.on('new_photo', (newPhoto) => {
-      if (!photos.some(p => p.id === newPhoto.id)) {
-        photos.unshift(newPhoto);
-        renderPhotoFeed();
+    // Real-time updates (Socket.io on Node / auto-polling fallback on Vercel)
+    if (typeof io !== 'undefined') {
+      try {
+        const socket = io({ transports: ['websocket', 'polling'], timeout: 3000 });
+        socket.on('new_photo', (newPhoto) => {
+          if (!photos.some(p => p.id === newPhoto.id)) {
+            photos.unshift(newPhoto);
+            renderPhotoFeed();
+          }
+        });
+      } catch (e) {
+        console.warn('Socket connect notice:', e);
       }
-    });
+    }
+
+    // Auto-sync gallery every 15 seconds (ensures Vercel serverless always gets new photos)
+    setInterval(() => {
+      loadGalleryPhotos();
+    }, 15000);
 
     // Initial load
     window.addEventListener('DOMContentLoaded', () => {
