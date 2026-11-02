@@ -214,7 +214,7 @@
       </div>
 
       <button id="btnFlipLens" class="w-9 h-9 rounded-full bg-neutral-900 border border-neutral-800 text-neutral-300 flex items-center justify-center hover:bg-neutral-800 transition active:scale-95" title="Putar Lensa">
-        <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-4 h-4 transition-transform duration-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
         </svg>
       </button>
@@ -520,7 +520,10 @@
     // State
     let photos = [];
     let currentStream = null;
-    let currentFacingMode = 'user';
+    let currentFacingMode = 'user'; // 'user' or 'environment'
+    let isFrontFacingCamera = true;
+    let lastActiveDeviceId = null;
+    let isSwitchingCamera = false;
     let capturedDataUrl = null;
     let isFlashEnabled = true;
     let remainingFilmCount = 24;
@@ -960,26 +963,109 @@
       capturedDataUrl = null;
     }
 
+    // Helper to query video input devices
+    async function getAvailableVideoDevices() {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return [];
+      try {
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        return devices.filter(d => d.kind === 'videoinput');
+      } catch (e) {
+        return [];
+      }
+    }
+
+    // Build smart prioritized constraints for target mode ('user' or 'environment')
+    async function resolveTargetConstraints(targetMode) {
+      const devices = await getAvailableVideoDevices();
+      let targetDeviceId = null;
+
+      if (devices.length > 0) {
+        if (targetMode === 'environment') {
+          // Look for explicit back camera label
+          const backDev = devices.find(d => /back|rear|environment|belakang|posterior|world/i.test(d.label));
+          if (backDev) {
+            targetDeviceId = backDev.deviceId;
+          } else if (lastActiveDeviceId && devices.length === 2) {
+            // 2 cameras total: toggle to the other device
+            const otherDev = devices.find(d => d.deviceId && d.deviceId !== lastActiveDeviceId);
+            if (otherDev) targetDeviceId = otherDev.deviceId;
+          } else if (devices.length > 1) {
+            // Usually device 0 on Android is the rear sensor
+            const nonFront = devices.find(d => d.label && !/front|user|selfie|depan/i.test(d.label));
+            targetDeviceId = nonFront ? nonFront.deviceId : devices[0].deviceId;
+          }
+        } else {
+          // Look for explicit front camera label
+          const frontDev = devices.find(d => /front|user|selfie|depan|anterior|face/i.test(d.label));
+          if (frontDev) {
+            targetDeviceId = frontDev.deviceId;
+          } else if (lastActiveDeviceId && devices.length === 2) {
+            const otherDev = devices.find(d => d.deviceId && d.deviceId !== lastActiveDeviceId);
+            if (otherDev) targetDeviceId = otherDev.deviceId;
+          } else if (devices.length > 1) {
+            const frontOrLast = devices.find(d => /front|user|selfie|depan/i.test(d.label)) || devices[devices.length - 1];
+            targetDeviceId = frontOrLast.deviceId;
+          }
+        }
+      }
+
+      const tiers = [];
+
+      // Tier 1: Target by explicit deviceId if discovered
+      if (targetDeviceId) {
+        tiers.push({
+          video: { deviceId: { exact: targetDeviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+          audio: false
+        });
+        tiers.push({
+          video: { deviceId: { exact: targetDeviceId } },
+          audio: false
+        });
+      }
+
+      // Tier 2: Enforce exact facingMode (forces mobile Chrome & iOS Safari to physically flip sensors)
+      tiers.push({
+        video: { facingMode: { exact: targetMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      tiers.push({
+        video: { facingMode: { exact: targetMode } },
+        audio: false
+      });
+
+      // Tier 3: Soft ideal facingMode (for laptop webcams or devices that reject 'exact')
+      tiers.push({
+        video: { facingMode: { ideal: targetMode }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      tiers.push({
+        video: { facingMode: targetMode },
+        audio: false
+      });
+
+      // Tier 4: Fallback to any camera
+      tiers.push({ video: true, audio: false });
+
+      return tiers;
+    }
+
     // Start Video Stream
-    async function startCamera() {
+    async function startCamera(targetMode) {
+      if (targetMode) {
+        currentFacingMode = targetMode;
+      }
+
       stopCamera();
 
-      if (currentFacingMode === 'user') {
-        video.classList.add('mirror');
-      } else {
-        video.classList.remove('mirror');
-      }
+      // Short delay for hardware release on mobile
+      await new Promise(r => setTimeout(r, 60));
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
         showCameraNotice();
         return;
       }
 
-      const tiers = [
-        { video: { facingMode: { ideal: currentFacingMode }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
-        { video: { facingMode: currentFacingMode }, audio: false },
-        { video: true, audio: false }
-      ];
+      const tiers = await resolveTargetConstraints(currentFacingMode);
 
       let stream = null;
       for (const c of tiers) {
@@ -995,6 +1081,37 @@
       }
 
       currentStream = stream;
+      const track = stream.getVideoTracks()[0];
+      if (track) {
+        const settings = track.getSettings ? track.getSettings() : {};
+        if (settings.deviceId) {
+          lastActiveDeviceId = settings.deviceId;
+        }
+
+        // Determine actual facing mode from hardware track
+        let actualIsFront = (currentFacingMode === 'user');
+        if (settings.facingMode) {
+          actualIsFront = (settings.facingMode === 'user');
+        } else if (track.label) {
+          const lbl = track.label.toLowerCase();
+          if (lbl.includes('back') || lbl.includes('rear') || lbl.includes('environment') || lbl.includes('belakang')) {
+            actualIsFront = false;
+          } else if (lbl.includes('front') || lbl.includes('user') || lbl.includes('selfie') || lbl.includes('depan')) {
+            actualIsFront = true;
+          }
+        }
+
+        isFrontFacingCamera = actualIsFront;
+        currentFacingMode = actualIsFront ? 'user' : 'environment';
+
+        // Apply mirror CSS only when camera is truly front-facing
+        if (actualIsFront) {
+          video.classList.add('mirror');
+        } else {
+          video.classList.remove('mirror');
+        }
+      }
+
       video.srcObject = stream;
       video.muted = true;
       video.setAttribute('playsinline', '');
@@ -1010,8 +1127,15 @@
 
     function stopCamera() {
       if (currentStream) {
-        currentStream.getTracks().forEach(t => t.stop());
+        try {
+          currentStream.getTracks().forEach(t => {
+            try { t.stop(); } catch (e) {}
+          });
+        } catch (e) {}
         currentStream = null;
+      }
+      if (video) {
+        video.srcObject = null;
       }
     }
 
@@ -1023,9 +1147,25 @@
       startCamera();
     });
 
-    btnFlipLens.addEventListener('click', () => {
-      currentFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
-      startCamera();
+    btnFlipLens.addEventListener('click', async () => {
+      if (isSwitchingCamera) return;
+      isSwitchingCamera = true;
+      btnFlipLens.disabled = true;
+
+      // Animate rotation on button icon
+      const svgIcon = btnFlipLens.querySelector('svg');
+      if (svgIcon) svgIcon.classList.add('rotate-180');
+
+      try {
+        const nextFacingMode = currentFacingMode === 'user' ? 'environment' : 'user';
+        await startCamera(nextFacingMode);
+      } finally {
+        setTimeout(() => {
+          if (svgIcon) svgIcon.classList.remove('rotate-180');
+          btnFlipLens.disabled = false;
+          isSwitchingCamera = false;
+        }, 350);
+      }
     });
 
     // Gallery Picker Fallback
@@ -1107,7 +1247,7 @@
       filmFrameNumber.textContent = remainingFilmCount;
 
       // Process Film on Canvas
-      processAnalogFilmFrame(video, currentFacingMode === 'user');
+      processAnalogFilmFrame(video, isFrontFacingCamera);
     }
 
     // 35mm Analog Film Processing with Filters & Direct-Flash Shader
