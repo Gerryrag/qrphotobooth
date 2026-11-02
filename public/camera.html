@@ -1265,16 +1265,6 @@
         playWinderSound();
       }, 400);
     }
-      previewImage.src = capturedDataUrl;
-      cameraBodyWrapper.classList.add('hidden');
-      developedFormWrapper.classList.remove('hidden');
-      stopCamera();
-
-      // Play automatic film winder sound after shot
-      setTimeout(() => {
-        playWinderSound();
-      }, 400);
-    }
 
     // Retake Shot
     btnRetakeFilm.addEventListener('click', () => {
